@@ -1350,6 +1350,7 @@ struct drm_dp_link {
 	unsigned int max_lanes;
 
 	struct drm_dp_link_caps caps;
+	unsigned char edp;
 
 	unsigned int rate;
 	unsigned int lanes;
