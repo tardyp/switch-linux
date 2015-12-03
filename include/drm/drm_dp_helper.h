@@ -1301,13 +1301,24 @@ int drm_dp_dpcd_read_link_status(struct drm_dp_aux *aux,
 /*
  * DisplayPort link
  */
-#define DP_LINK_CAP_ENHANCED_FRAMING (1 << 0)
+
+/**
+ * struct drm_dp_link_caps - DP link capabilities
+ * @enhanced_framing: enhanced framing capability (mandatory as of DP 1.2)
+ */
+struct drm_dp_link_caps {
+	bool enhanced_framing;
+};
+
+void drm_dp_link_caps_copy(struct drm_dp_link_caps *dest,
+			   const struct drm_dp_link_caps *src);
 
 struct drm_dp_link {
 	unsigned char revision;
 	unsigned int max_rate;
 	unsigned int max_lanes;
-	unsigned long capabilities;
+
+	struct drm_dp_link_caps caps;
 
 	unsigned int rate;
 	unsigned int lanes;
