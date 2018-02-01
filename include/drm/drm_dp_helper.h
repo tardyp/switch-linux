@@ -1383,7 +1383,14 @@ struct drm_dp_link {
 
 	unsigned int rate;
 	unsigned int lanes;
+
+	unsigned long rates[DP_MAX_SUPPORTED_RATES];
+	unsigned int num_rates;
 };
+
+int drm_dp_link_add_rate(struct drm_dp_link *link, unsigned long rate);
+int drm_dp_link_remove_rate(struct drm_dp_link *link, unsigned long rate);
+void drm_dp_link_update_rates(struct drm_dp_link *link);
 
 int drm_dp_link_probe(struct drm_dp_aux *aux, struct drm_dp_link *link);
 int drm_dp_link_power_up(struct drm_dp_aux *aux, struct drm_dp_link *link);
