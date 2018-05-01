@@ -853,7 +853,6 @@
 	pmc@7000e400 {
 		nvidia,invert-interrupt;
 	};
-
 	usb@70090000 {
 		phys = <&{/padctl@7009f000/pads/usb2/lanes/usb2-0}>,
 		       <&{/padctl@7009f000/pads/pcie/lanes/pcie-6}>;
@@ -866,10 +865,21 @@
 		avdd-pll-uerefe-supply = <&avdd_1v05_pll>;
 		dvdd-usb-ss-pll-supply = <&vdd_pex_1v05>;
 		hvdd-usb-ss-pll-e-supply = <&vdd_1v8>;
+		dvdd-pex-pll-supply = <&vdd_pex_1v05>;
+		hvdd-pex-pll-e-supply = <&vdd_1v8>;
 
 		status = "okay";
 	};
-
+	udc: udc@7d000000 {
+		status = "okay";
+	};
+	ehci: usb@7d000000 {
+		status = "disabled";
+	};
+	phy1: usb-phy@7d000000 {
+		status = "okay";
+		vbus-supply = <&usb2_vbus>;
+	};
 	padctl@7009f000 {
 		status = "okay";
 
@@ -879,7 +889,7 @@
 
 				lanes {
 					usb2-0 {
-						nvidia,function = "xusb";
+						nvidia,function = "snps";
 						status = "okay";
 					};
 				};
@@ -1058,6 +1068,15 @@
 			regulator-min-microvolt = <1800000>;
 			regulator-max-microvolt = <1800000>;
 			gpio = <&gpio TEGRA_GPIO(J, 7) GPIO_ACTIVE_HIGH>;
+			enable-active-high;
+		};
+		usb2_vbus: regulator@6 {
+			compatible = "regulator-fixed";
+			reg = <6>;
+			regulator-name = "USB2_VBUS";
+			regulator-min-microvolt = <5000000>;
+			regulator-max-microvolt = <5000000>;
+			gpio = <&gpio TEGRA_GPIO(CC, 4) GPIO_ACTIVE_HIGH>;
 			enable-active-high;
 		};
 	};

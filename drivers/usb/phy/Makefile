@@ -17,6 +17,9 @@ obj-$(CONFIG_AM335X_PHY_USB)		+= phy-am335x.o
 obj-$(CONFIG_OMAP_OTG)			+= phy-omap-otg.o
 obj-$(CONFIG_TWL6030_USB)		+= phy-twl6030-usb.o
 obj-$(CONFIG_USB_EHCI_TEGRA)		+= phy-tegra-usb.o
+obj-$(CONFIG_USB_TEGRA)			+= phy-tegra-usb-compat.o
+# FIXME:(badhri) May be gizmo.c has to be moved to drivers/soc..
+obj-$(CONFIG_ARCH_TEGRA)		+= gizmo.o
 obj-$(CONFIG_USB_GPIO_VBUS)		+= phy-gpio-vbus-usb.o
 obj-$(CONFIG_USB_ISP1301)		+= phy-isp1301.o
 obj-$(CONFIG_USB_MV_OTG)		+= phy-mv-usb.o

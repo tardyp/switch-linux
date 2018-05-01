@@ -7,6 +7,8 @@ udc-core-y			:= core.o trace.o
 #
 # USB peripheral controller drivers
 #
+GCOV_PROFILE_tegra_udc.o := y
+
 obj-$(CONFIG_USB_GADGET)	+= udc-core.o
 obj-$(CONFIG_USB_DUMMY_HCD)	+= dummy_hcd.o
 obj-$(CONFIG_USB_NET2272)	+= net2272.o
@@ -24,6 +26,8 @@ obj-$(CONFIG_USB_BCM63XX_UDC)	+= bcm63xx_udc.o
 obj-$(CONFIG_USB_FSL_USB2)	+= fsl_usb2_udc.o
 fsl_usb2_udc-y			:= fsl_udc_core.o
 fsl_usb2_udc-$(CONFIG_ARCH_MXC)	+= fsl_mxc_udc.o
+CFLAGS_tegra_udc.o		= -Werror
+obj-$(CONFIG_USB_TEGRA)		+= tegra_udc.o
 obj-$(CONFIG_USB_M66592)	+= m66592-udc.o
 obj-$(CONFIG_USB_R8A66597)	+= r8a66597-udc.o
 obj-$(CONFIG_USB_RENESAS_USB3)	+= renesas_usb3.o
