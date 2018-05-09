@@ -55,11 +55,6 @@ int tegra_fb_get_tiling(struct drm_framebuffer *framebuffer,
 	uint64_t modifier = fb->base.modifier;
 
 	switch (modifier) {
-	case DRM_FORMAT_MOD_LINEAR:
-		tiling->mode = TEGRA_BO_TILING_MODE_PITCH;
-		tiling->value = 0;
-		break;
-
 	case DRM_FORMAT_MOD_NVIDIA_TEGRA_TILED:
 		tiling->mode = TEGRA_BO_TILING_MODE_TILED;
 		tiling->value = 0;
@@ -96,7 +91,9 @@ int tegra_fb_get_tiling(struct drm_framebuffer *framebuffer,
 		break;
 
 	default:
-		return -EINVAL;
+		/* TODO: handle YUV formats? */
+		*tiling = fb->planes[0]->tiling;
+		break;
 	}
 
 	return 0;
