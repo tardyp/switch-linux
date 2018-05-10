@@ -239,7 +239,7 @@
 
 			// Buttons
 			buttons {
-				nvidia,pins = "button_vol_up_px6", "button_vol_down_px7";
+				nvidia,pins = "button_power_on_px5", "button_vol_up_px6", "button_vol_down_px7";
 				nvidia,function = "rsvd3";
 				nvidia,pull = <TEGRA_PIN_PULL_UP>;
 				nvidia,tristate = <TEGRA_PIN_DISABLE>;
@@ -852,6 +852,14 @@
 
 	pmc@7000e400 {
 		nvidia,invert-interrupt;
+		nvidia,suspend-mode = <1>;
+		nvidia,cpu-pwr-good-time = <0>;
+		nvidia,cpu-pwr-off-time = <0>;
+		nvidia,core-pwr-good-time = <12000 6000>;
+		nvidia,core-pwr-off-time = <39053>;
+		nvidia,core-power-req-active-high;
+		nvidia,sys-clock-req-active-high;
+		status = "okay";
 	};
 
 	usb@70090000 {
@@ -982,16 +990,26 @@
 		compatible = "gpio-keys";
 		label = "gpio-keys";
 
+		power {
+			label = "Power";
+			gpios = <&gpio TEGRA_GPIO(X, 5) GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_POWER>;
+			debounce-interval = <30>;
+			wakeup-source;
+		};
+
 		volume_down {
 			label = "Volume Down";
 			gpios = <&gpio TEGRA_GPIO(X, 7) GPIO_ACTIVE_LOW>;
 			linux,code = <KEY_VOLUMEDOWN>;
+			wakeup-source;
 		};
 
 		volume_up {
 			label = "Volume Up";
 			gpios = <&gpio TEGRA_GPIO(X, 6) GPIO_ACTIVE_LOW>;
 			linux,code = <KEY_VOLUMEUP>;
+			wakeup-source;
 		};
 	};
 
