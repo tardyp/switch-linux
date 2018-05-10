@@ -525,7 +525,7 @@ static struct snd_soc_dai_driver tegra210_admaif_dais[10] = {
 		},							\
 	}
 
-static struct snd_soc_dai_driver tegra210_admaif_codec_dais[] = {
+static struct snd_soc_dai_driver tegra210_admaif_component_dais[] = {
 	ADMAIF_CODEC_FIFO_DAI(1),
 	ADMAIF_CODEC_FIFO_DAI(2),
 	ADMAIF_CODEC_FIFO_DAI(3),
@@ -592,22 +592,22 @@ static const struct snd_soc_dapm_route tegra210_admaif_routes[] = {
 	ADMAIF_ROUTES(10)
 };
 
-static int tegra210_admaif_codec_probe(struct snd_soc_codec *codec)
+static int tegra210_admaif_component_probe(struct snd_soc_component *component)
 {
-	struct tegra210_admaif *admaif = snd_soc_codec_get_drvdata(codec);
+	struct tegra210_admaif *admaif = snd_soc_component_get_drvdata(component);
 
-	codec->control_data = admaif->regmap;
+	component->regmap = admaif->regmap;
 
 	return 0;
 }
 
-static struct snd_soc_codec_driver tegra210_admaif_codec = {
-	.probe = tegra210_admaif_codec_probe,
+static struct snd_soc_component_driver tegra210_admaif_component = {
+	.probe = tegra210_admaif_component_probe,
 	.dapm_widgets = tegra210_admaif_widgets,
 	.num_dapm_widgets = ARRAY_SIZE(tegra210_admaif_widgets),
 	.dapm_routes = tegra210_admaif_routes,
 	.num_dapm_routes = ARRAY_SIZE(tegra210_admaif_routes),
-	.idle_bias_off = 1,
+	.idle_bias_on = 0,
 };
 
 static const struct snd_soc_component_driver tegra210_admaif_dai_driver = {
@@ -752,9 +752,9 @@ static int tegra210_admaif_probe(struct platform_device *pdev)
 		goto err_suspend;
 	}
 
-	ret = snd_soc_register_codec(&pdev->dev, &tegra210_admaif_codec,
-				tegra210_admaif_codec_dais,
-				ARRAY_SIZE(tegra210_admaif_codec_dais));
+	ret = snd_soc_register_component(&pdev->dev, &tegra210_admaif_component,
+				tegra210_admaif_component_dais,
+				ARRAY_SIZE(tegra210_admaif_component_dais));
 	if (ret != 0) {
 		dev_err(&pdev->dev, "Could not register CODEC: %d\n", ret);
 		goto err_unregister_dais;

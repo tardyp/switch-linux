@@ -371,11 +371,11 @@ int tegra114_amx_set_channel_map(struct snd_soc_dai *dai,
 	return 0;
 }
 
-static int tegra114_amx_codec_probe(struct snd_soc_codec *codec)
+static int tegra114_amx_component_probe(struct snd_soc_component *component)
 {
-	struct tegra114_amx *amx = snd_soc_codec_get_drvdata(codec);
+	struct tegra114_amx *amx = snd_soc_component_get_drvdata(component);
 
-	codec->control_data = amx->regmap;
+	component->control_data = amx->regmap;
 
 	return 0;
 }
@@ -461,8 +461,8 @@ static const struct snd_soc_dapm_route tegra114_amx_routes[] = {
 static int tegra124_virt_amx_chan_en_get(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_value *ucontrol)
 {
-	struct snd_soc_codec *codec = snd_soc_kcontrol_codec(kcontrol);
-	struct tegra114_amx *amx = snd_soc_codec_get_drvdata(codec);
+	struct snd_soc_component *component = snd_soc_kcontrol_component(kcontrol);
+	struct tegra114_amx *amx = snd_soc_component_get_drvdata(component);
 	unsigned int channel_mask = (unsigned int)kcontrol->private_value;
 	unsigned int val;
 
@@ -478,8 +478,8 @@ static int tegra124_virt_amx_chan_en_get(struct snd_kcontrol *kcontrol,
 static int tegra124_virt_amx_chan_en_set(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_value *ucontrol)
 {
-	struct snd_soc_codec *codec = snd_soc_kcontrol_codec(kcontrol);
-	struct tegra114_amx *amx = snd_soc_codec_get_drvdata(codec);
+	struct snd_soc_component *component = snd_soc_kcontrol_component(kcontrol);
+	struct tegra114_amx *amx = snd_soc_component_get_drvdata(component);
 	unsigned int enable_mask = (unsigned int)kcontrol->private_value;
 	unsigned int val;
 
@@ -506,22 +506,22 @@ static const struct snd_kcontrol_new tegra124_virt_amx_controls[] = {
 		tegra124_virt_amx_chan_en_get, tegra124_virt_amx_chan_en_set),
 };
 
-static struct snd_soc_codec_driver tegra114_amx_codec = {
-	.probe = tegra114_amx_codec_probe,
+static struct snd_soc_component_driver tegra114_amx_component = {
+	.probe = tegra114_amx_component_probe,
 	.dapm_widgets = tegra114_amx_widgets,
 	.num_dapm_widgets = ARRAY_SIZE(tegra114_amx_widgets),
 	.dapm_routes = tegra114_amx_routes,
 	.num_dapm_routes = ARRAY_SIZE(tegra114_amx_routes),
-	.idle_bias_off = 1,
+	.idle_bias_on = 0,
 };
 
-static struct snd_soc_codec_driver tegra124_virt_amx_codec = {
-	.probe = tegra114_amx_codec_probe,
+static struct snd_soc_component_driver tegra124_virt_amx_component = {
+	.probe = tegra114_amx_component_probe,
 	.dapm_widgets = tegra114_amx_widgets,
 	.num_dapm_widgets = ARRAY_SIZE(tegra114_amx_widgets),
 	.dapm_routes = tegra114_amx_routes,
 	.num_dapm_routes = ARRAY_SIZE(tegra114_amx_routes),
-	.idle_bias_off = 1,
+	.idle_bias_on = 0,
 	.controls = tegra124_virt_amx_controls,
 	.num_controls = ARRAY_SIZE(tegra124_virt_amx_controls),
 };
@@ -597,8 +597,8 @@ static int tegra114_amx_platform_probe(struct platform_device *pdev)
 	int ret;
 	const struct of_device_id *match;
 	struct tegra114_amx_soc_data *soc_data;
-	struct snd_soc_codec_driver *codec;
-	codec = &tegra114_amx_codec;
+	struct snd_soc_component_driver *component;
+	component = &tegra114_amx_component;
 
 	match = of_match_device(tegra114_amx_of_match, &pdev->dev);
 	if (!match) {
@@ -665,14 +665,14 @@ static int tegra114_amx_platform_probe(struct platform_device *pdev)
 
 	if (of_device_is_compatible(pdev->dev.of_node,
 				"nvidia,tegra124-virt-amx")) {
-		codec = &tegra124_virt_amx_codec;
-		codec->dapm_widgets =
+		component = &tegra124_virt_amx_component;
+		component->dapm_widgets =
 				tegra124_virt_amx_widgets;
-		codec->num_dapm_widgets =
+		component->num_dapm_widgets =
 				ARRAY_SIZE(tegra124_virt_amx_widgets);
 	}
 
-	ret = snd_soc_register_codec(&pdev->dev, codec,
+	ret = snd_soc_register_component(&pdev->dev, component,
 				     tegra114_amx_dais,
 				     ARRAY_SIZE(tegra114_amx_dais));
 	if (ret != 0) {
@@ -697,7 +697,7 @@ static int tegra114_amx_platform_remove(struct platform_device *pdev)
 {
 	struct tegra114_amx *amx = dev_get_drvdata(&pdev->dev);
 
-	snd_soc_unregister_codec(&pdev->dev);
+	snd_soc_unregister_component(&pdev->dev);
 
 	pm_runtime_disable(&pdev->dev);
 	if (!pm_runtime_status_suspended(&pdev->dev))

@@ -192,8 +192,8 @@ static int tegra210_adx_get_status(struct tegra210_adx *adx)
 static int tegra210_adx_stop(struct snd_soc_dapm_widget *w,
 				struct snd_kcontrol *kcontrol, int event)
 {
-	struct snd_soc_codec *codec = snd_soc_dapm_to_codec(w->dapm);
-	struct device *dev = codec->dev;
+	struct snd_soc_component *component = snd_soc_dapm_to_component(w->dapm);
+	struct device *dev = component->dev;
 	struct tegra210_adx *adx = dev_get_drvdata(dev);
 	int dcnt = 10, ret = 0;
 
@@ -424,11 +424,11 @@ static int tegra210_adx_set_channel_map(struct snd_soc_dai *dai,
 	return 0;
 }
 
-static int tegra210_adx_codec_probe(struct snd_soc_codec *codec)
+static int tegra210_adx_component_probe(struct snd_soc_component *component)
 {
-	struct tegra210_adx *adx = snd_soc_codec_get_drvdata(codec);
+	struct tegra210_adx *adx = snd_soc_component_get_drvdata(component);
 
-	codec->control_data = adx->regmap;
+	component->regmap = adx->regmap;
 
 	return 0;
 }
@@ -499,13 +499,13 @@ static const struct snd_soc_dapm_route tegra210_adx_routes[] = {
 	{ "OUT4 Transmit", NULL, "OUT4" },
 };
 
-static struct snd_soc_codec_driver tegra210_adx_codec = {
-	.probe = tegra210_adx_codec_probe,
+static struct snd_soc_component_driver tegra210_adx_component = {
+	.probe = tegra210_adx_component_probe,
 	.dapm_widgets = tegra210_adx_widgets,
 	.num_dapm_widgets = ARRAY_SIZE(tegra210_adx_widgets),
 	.dapm_routes = tegra210_adx_routes,
 	.num_dapm_routes = ARRAY_SIZE(tegra210_adx_routes),
-	.idle_bias_off = 1,
+	.idle_bias_on = 0,
 };
 
 static bool tegra210_adx_wr_reg(struct device *dev,
@@ -693,7 +693,7 @@ static int tegra210_adx_platform_probe(struct platform_device *pdev)
 			goto err_pm_disable;
 	}
 
-	ret = snd_soc_register_codec(&pdev->dev, &tegra210_adx_codec,
+	ret = snd_soc_register_component(&pdev->dev, &tegra210_adx_component,
 				     tegra210_adx_dais,
 				     ARRAY_SIZE(tegra210_adx_dais));
 	if (ret != 0) {
@@ -714,7 +714,7 @@ err:
 
 static int tegra210_adx_platform_remove(struct platform_device *pdev)
 {
-	snd_soc_unregister_codec(&pdev->dev);
+	snd_soc_unregister_component(&pdev->dev);
 
 	pm_runtime_disable(&pdev->dev);
 	if (!pm_runtime_status_suspended(&pdev->dev))
