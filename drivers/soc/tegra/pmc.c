@@ -132,7 +132,7 @@ struct tegra_powergate {
 };
 
 struct tegra_io_pad_soc {
-	enum tegra_io_pad id;
+	unsigned int id;
 	unsigned int dpd;
 	unsigned int voltage;
 };
@@ -153,6 +153,7 @@ struct tegra_pmc_soc {
 
 	bool has_tsense_reset;
 	bool has_gpu_clamps;
+	bool needs_mbist_war;
 
 	const struct tegra_io_pad_soc *io_pads;
 	unsigned int num_io_pads;
@@ -431,6 +432,11 @@ static int tegra_powergate_power_up(struct tegra_powergate *pg,
 
 	usleep_range(10, 20);
 
+	if (pg->pmc->soc->needs_mbist_war)
+		err = tegra210_clk_handle_mbist_war(pg->id);
+	if (err)
+		goto disable_clks;
+
 	if (disable_clocks)
 		tegra_powergate_disable_clocks(pg);
 
@@ -588,6 +594,7 @@ int tegra_powergate_sequence_power_up(unsigned int id, struct clk *clk,
 	pg.num_clks = 1;
 	pg.resets = &rst;
 	pg.num_resets = 1;
+	pg.pmc = pmc;
 
 	err = tegra_powergate_power_up(&pg, false);
 	if (err)
@@ -945,7 +952,7 @@ static void tegra_powergate_init(struct tegra_pmc *pmc,
 }
 
 static const struct tegra_io_pad_soc *
-tegra_io_pad_find(struct tegra_pmc *pmc, enum tegra_io_pad id)
+tegra_io_pad_find(struct tegra_pmc *pmc, unsigned int id)
 {
 	unsigned int i;
 
@@ -956,7 +963,7 @@ tegra_io_pad_find(struct tegra_pmc *pmc, enum tegra_io_pad id)
 	return NULL;
 }
 
-static int tegra_io_pad_prepare(enum tegra_io_pad id, unsigned long *request,
+static int tegra_io_pad_prepare(unsigned int id, unsigned long *request,
 				unsigned long *status, u32 *mask)
 {
 	const struct tegra_io_pad_soc *pad;
@@ -1029,7 +1036,7 @@ static void tegra_io_pad_unprepare(void)
  *
  * Returns: 0 on success or a negative error code on failure.
  */
-int tegra_io_pad_power_enable(enum tegra_io_pad id)
+int tegra_io_pad_power_enable(unsigned int id)
 {
 	unsigned long request, status;
 	u32 mask;
@@ -1065,7 +1072,7 @@ EXPORT_SYMBOL(tegra_io_pad_power_enable);
  *
  * Returns: 0 on success or a negative error code on failure.
  */
-int tegra_io_pad_power_disable(enum tegra_io_pad id)
+int tegra_io_pad_power_disable(unsigned int id)
 {
 	unsigned long request, status;
 	u32 mask;
@@ -1095,7 +1102,7 @@ unlock:
 }
 EXPORT_SYMBOL(tegra_io_pad_power_disable);
 
-int tegra_io_pad_set_voltage(enum tegra_io_pad id,
+int tegra_io_pad_set_voltage(unsigned int id,
 			     enum tegra_io_pad_voltage voltage)
 {
 	const struct tegra_io_pad_soc *pad;
@@ -1133,7 +1140,7 @@ int tegra_io_pad_set_voltage(enum tegra_io_pad id,
 }
 EXPORT_SYMBOL(tegra_io_pad_set_voltage);
 
-int tegra_io_pad_get_voltage(enum tegra_io_pad id)
+int tegra_io_pad_get_voltage(unsigned int id)
 {
 	const struct tegra_io_pad_soc *pad;
 	u32 value;
@@ -1815,6 +1822,7 @@ static const struct tegra_pmc_soc tegra210_pmc_soc = {
 	.cpu_powergates = tegra210_cpu_powergates,
 	.has_tsense_reset = true,
 	.has_gpu_clamps = true,
+	.needs_mbist_war = true,
 	.num_io_pads = ARRAY_SIZE(tegra210_io_pads),
 	.io_pads = tegra210_io_pads,
 	.regs = &tegra20_pmc_regs,

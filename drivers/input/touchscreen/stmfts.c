@@ -14,6 +14,7 @@
 #include <linux/module.h>
 #include <linux/pm_runtime.h>
 #include <linux/regulator/consumer.h>
+#include <linux/kthread.h>
 
 /* I2C commands */
 #define STMFTS_READ_INFO			0x80
@@ -34,6 +35,7 @@
 #define STMFTS_FULL_FORCE_CALIBRATION		0xa2
 #define STMFTS_MS_CX_TUNING			0xa3
 #define STMFTS_SS_CX_TUNING			0xa4
+#define STMFTS_WRITE_REGISTER			0xb6
 
 /* events */
 #define STMFTS_EV_NO_EVENT			0x00
@@ -104,6 +106,11 @@ struct stmfts_data {
 	bool led_status;
 	bool hover_enabled;
 	bool running;
+	bool no_sleep_support;
+	int irq_enable_reg;
+	u8 irq_enable_data;
+
+	struct task_struct *poll_thread;
 };
 
 static void stmfts_brightness_set(struct led_classdev *led_cdev,
@@ -169,6 +176,7 @@ static int stmfts_read_events(struct stmfts_data *sdata)
 static void stmfts_report_contact_event(struct stmfts_data *sdata,
 					const u8 event[])
 {
+#if 0
 	u8 slot_id = (event[0] & STMFTS_MASK_TOUCH_ID) >> 4;
 	u16 x = event[1] | ((event[2] & STMFTS_MASK_X_MSB) << 8);
 	u16 y = (event[2] >> 4) | (event[3] << 4);
@@ -176,7 +184,17 @@ static void stmfts_report_contact_event(struct stmfts_data *sdata,
 	u8 min = event[5];
 	u8 orientation = event[6];
 	u8 area = event[7];
+#else
+	u8 slot_id = (event[0] & STMFTS_MASK_TOUCH_ID) >> 4;
+	u16 x = (event[1] << 4) | ((event[3] & 0xf0) >> 4);
+	u16 y = (event[2] << 4) | (event[3] & 0x0f);
 
+	u8 maj = event[4] | (event[5] << 8);
+	u8 min = maj;
+	// these two are not quite right but meh
+	u8 orientation = event[6];
+	u8 area = event[7];
+#endif
 	input_mt_slot(sdata->input, slot_id);
 
 	input_mt_report_slot_state(sdata->input, MT_TOOL_FINGER, true);
@@ -313,6 +331,16 @@ static irqreturn_t stmfts_irq_handler(int irq, void *dev)
 	return IRQ_HANDLED;
 }
 
+static int stmfts_poll_thread(void *data)
+{
+	while (!kthread_should_stop()) {
+		stmfts_irq_handler(0, data);
+		msleep(2);
+	}
+	return 0;
+}
+
+
 static int stmfts_command(struct stmfts_data *sdata, const u8 cmd)
 {
 	int err;
@@ -328,6 +356,18 @@ static int stmfts_command(struct stmfts_data *sdata, const u8 cmd)
 		return -ETIMEDOUT;
 
 	return 0;
+}
+
+static int stmfts_write_register(struct stmfts_data *sdata, const u16 reg, const u8 value)
+{
+	u8 buf[3];
+
+	buf[0] = reg >> 8;
+	buf[1] = reg & 0xff;
+	buf[2] = value;
+
+	return i2c_smbus_write_i2c_block_data(sdata->client,
+					      STMFTS_WRITE_REGISTER, 3, buf);
 }
 
 static int stmfts_input_open(struct input_dev *dev)
@@ -546,18 +586,52 @@ static int stmfts_power_on(struct stmfts_data *sdata)
 	sdata->fw_ver = be16_to_cpup((__be16 *)&reg[2]);
 	sdata->config_id = reg[4];
 	sdata->config_ver = reg[5];
-
-	enable_irq(sdata->client->irq);
+	
+	if (sdata->client->irq)
+		enable_irq(sdata->client->irq);
 
 	msleep(50);
 
-	err = stmfts_command(sdata, STMFTS_SYSTEM_RESET);
+	if (!sdata->client->irq) {
+		sdata->poll_thread = kthread_run(stmfts_poll_thread, sdata, "stmfts_poll");
+		if (IS_ERR(sdata->poll_thread))
+			return -EIO;
+	}
+
+	/*
+	 * IRQs may be disabled on startup, so we need to reset the chip, then
+	 * immediately issue the command to enable IRQs. This will trigger
+	 * the completion for the reset command's queued status message.
+	 */
+	reinit_completion(&sdata->cmd_done);
+
+	err = i2c_smbus_write_byte(sdata->client, STMFTS_SYSTEM_RESET);
 	if (err)
-		return err;
+		goto cleanup_irq;
+
+	msleep(10);
+
+	if (sdata->client->irq && sdata->irq_enable_reg != -1) {
+		err = stmfts_write_register(sdata, sdata->irq_enable_reg,
+					    sdata->irq_enable_data);
+		if (err)
+			goto cleanup_irq;
+	}
+
+	if (!wait_for_completion_timeout(&sdata->cmd_done,
+					 msecs_to_jiffies(1000))) {
+		err = -ETIMEDOUT;
+		dev_err(&sdata->client->dev,
+			 "reset did not complete: %d\n", err);
+		goto cleanup_irq;
+	}
 
 	err = stmfts_command(sdata, STMFTS_SLEEP_OUT);
-	if (err)
-		return err;
+	if (err) {
+		dev_warn(&sdata->client->dev,
+			 "failed to perform sleep_out: %d\n", err);
+		sdata->no_sleep_support = true;
+	}
 
 	/* optional tuning */
 	err = stmfts_command(sdata, STMFTS_MS_CX_TUNING);
@@ -572,23 +646,37 @@ static int stmfts_power_on(struct stmfts_data *sdata)
 			 "failed to perform self auto tune: %d\n", err);
 
 	err = stmfts_command(sdata, STMFTS_FULL_FORCE_CALIBRATION);
-	if (err)
-		return err;
+	if (err) {
+		dev_err(&sdata->client->dev,
+			 "failed to perform calibration: %d\n", err);
+		goto cleanup_irq;
+	}
 
 	/*
 	 * At this point no one is using the touchscreen
 	 * and I don't really care about the return value
 	 */
-	(void) i2c_smbus_write_byte(sdata->client, STMFTS_SLEEP_IN);
+	if (!sdata->no_sleep_support)
+		(void) i2c_smbus_write_byte(sdata->client, STMFTS_SLEEP_IN);
 
 	return 0;
+
+cleanup_irq:
+	if (!sdata->client->irq)
+		kthread_stop(sdata->poll_thread);
+	else
+		disable_irq(sdata->client->irq);
+	return err;
 }
 
 static void stmfts_power_off(void *data)
 {
 	struct stmfts_data *sdata = data;
 
-	disable_irq(sdata->client->irq);
+	if (!sdata->client->irq)
+		kthread_stop(sdata->poll_thread);
+	else
+		disable_irq(sdata->client->irq);
 	regulator_bulk_disable(ARRAY_SIZE(sdata->regulators),
 						sdata->regulators);
 }
@@ -625,6 +713,7 @@ static int stmfts_probe(struct i2c_client *client,
 {
 	int err;
 	struct stmfts_data *sdata;
+	u32 prop[2];
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C |
 						I2C_FUNC_SMBUS_BYTE_DATA |
@@ -670,6 +759,15 @@ static int stmfts_probe(struct i2c_client *client,
 
 	sdata->use_key = device_property_read_bool(&client->dev,
 						   "touch-key-connected");
+	
+	if (!device_property_read_u32_array(&client->dev,
+		"interrupt-enable-reg", prop, 2)) {
+		sdata->irq_enable_reg = prop[0] & 0xffff;
+		sdata->irq_enable_data = prop[1] & 0xff;
+	} else {
+		sdata->irq_enable_reg = -1;
+	}
+	
 	if (sdata->use_key) {
 		input_set_capability(sdata->input, EV_KEY, KEY_MENU);
 		input_set_capability(sdata->input, EV_KEY, KEY_BACK);
@@ -689,13 +787,15 @@ static int stmfts_probe(struct i2c_client *client,
 	 * interrupts. To be on the safe side it's better to not enable
 	 * the interrupts during their request.
 	 */
-	irq_set_status_flags(client->irq, IRQ_NOAUTOEN);
-	err = devm_request_threaded_irq(&client->dev, client->irq,
-					NULL, stmfts_irq_handler,
-					IRQF_ONESHOT,
-					"stmfts_irq", sdata);
-	if (err)
-		return err;
+	if (client->irq) {
+		irq_set_status_flags(client->irq, IRQ_NOAUTOEN);
+		err = devm_request_threaded_irq(&client->dev, client->irq,
+						NULL, stmfts_irq_handler,
+						IRQF_ONESHOT,
+						"stmfts_irq", sdata);
+		if (err)
+			return err;
+	}
 
 	dev_dbg(&client->dev, "initializing ST-Microelectronics FTS...\n");
 
@@ -746,6 +846,9 @@ static int __maybe_unused stmfts_runtime_suspend(struct device *dev)
 	struct stmfts_data *sdata = dev_get_drvdata(dev);
 	int ret;
 
+	if (sdata->no_sleep_support)
+		return 0;
+
 	ret = i2c_smbus_write_byte(sdata->client, STMFTS_SLEEP_IN);
 	if (ret)
 		dev_warn(dev, "failed to suspend device: %d\n", ret);
@@ -757,6 +860,9 @@ static int __maybe_unused stmfts_runtime_resume(struct device *dev)
 {
 	struct stmfts_data *sdata = dev_get_drvdata(dev);
 	int ret;
+
+	if (sdata->no_sleep_support)
+		return 0;
 
 	ret = i2c_smbus_write_byte(sdata->client, STMFTS_SLEEP_OUT);
 	if (ret)

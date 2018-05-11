@@ -3,8 +3,10 @@
 #include <dt-bindings/gpio/tegra-gpio.h>
 #include <dt-bindings/memory/tegra210-mc.h>
 #include <dt-bindings/pinctrl/pinctrl-tegra.h>
+#include <dt-bindings/reset/tegra210-car.h>
 #include <dt-bindings/interrupt-controller/arm-gic.h>
 #include <dt-bindings/thermal/tegra124-soctherm.h>
+#include <dt-bindings/soc/tegra/pmc.h>
 
 / {
 	compatible = "nvidia,tegra210";
@@ -1011,6 +1013,7 @@
 		clock-names = "sdhci";
 		resets = <&tegra_car 14>;
 		reset-names = "sdhci";
+		nvidia,pad = <TEGRA_IO_PAD_SDMMC1>;
 		status = "disabled";
 	};
 
@@ -1033,6 +1036,7 @@
 		clock-names = "sdhci";
 		resets = <&tegra_car 69>;
 		reset-names = "sdhci";
+		nvidia,pad = <TEGRA_IO_PAD_SDMMC3>;
 		status = "disabled";
 	};
 
@@ -1054,6 +1058,25 @@
 		clock-names = "mipi-cal";
 		power-domains = <&pd_sor>;
 		#nvidia,mipi-calibrate-cells = <1>;
+	};
+
+	dfll: clock@70110000 {
+		compatible = "nvidia,tegra210-dfll";
+		reg = <0 0x70110000 0 0x100>, /* DFLL control */
+		      <0 0x70110000 0 0x100>, /* I2C output control */
+		      <0 0x70110100 0 0x100>, /* Integrated I2C controller */
+		      <0 0x70110200 0 0x100>; /* Look-up table RAM */
+		interrupts = <GIC_SPI 62 IRQ_TYPE_LEVEL_HIGH>;
+		clocks = <&tegra_car TEGRA210_CLK_DFLL_SOC>,
+			 <&tegra_car TEGRA210_CLK_DFLL_REF>,
+			 <&tegra_car TEGRA210_CLK_I2C5>;
+		clock-names = "soc", "ref", "i2c";
+		resets = <&tegra_car TEGRA210_RST_DFLL_DVCO>;
+		reset-names = "dvco";
+		#clock-cells = <0>;
+		clock-output-names = "dfllCPU_out";
+		out-clock-name="dfll_cpu";
+		status = "disabled";
 	};
 
 	aconnect@702c0000 {
@@ -1127,7 +1150,24 @@
 		status = "disabled";
 	};
 
-	usb@7d000000 {
+	udc: udc@7d000000 {
+		compatible = "nvidia,tegra210-udc";
+		reg = <0x0 0x7d000000 0x0 0x4000>,
+		      <0x0 0x7c000000 0x0 0x10000>,
+		      <0x0 0x6000C004 0x0 0x10C>;
+		interrupts = <0 20 0x04>;
+		clocks = <&tegra_car TEGRA210_CLK_USBD>,
+			 <&tegra_car TEGRA210_CLK_PLL_U>,
+			 <&tegra_car TEGRA210_CLK_USBD>,
+			 /* TEGRA210_CLK_USBD_SCLK */
+			 <&tegra_car 432>,
+			 /* TEGRA210_CLK_USBD_EMC */
+			 <&tegra_car 457>;
+		clock-names = "reg", "pll_u", "utmi-pads", "sclk", "emc";
+		status = "disabled";
+	};
+
+	ehci: usb@7d000000 {
 		compatible = "nvidia,tegra210-ehci", "nvidia,tegra30-ehci", "usb-ehci";
 		reg = <0x0 0x7d000000 0x0 0x4000>;
 		interrupts = <GIC_SPI 20 IRQ_TYPE_LEVEL_HIGH>;
@@ -1210,6 +1250,13 @@
 			device_type = "cpu";
 			compatible = "arm,cortex-a57";
 			reg = <0>;
+			clocks = <&tegra_car TEGRA210_CLK_CCLK_G>,
+				 <&tegra_car TEGRA210_CLK_PLL_X>,
+				 <&tegra_car TEGRA210_CLK_PLL_P_OUT_CPU>,
+				 <&dfll>;
+			clock-names = "cpu_g", "pll_x", "pll_p", "dfll";
+			/* FIXME: what's the actual transition time? */
+			clock-latency = <300000>;
 		};
 
 		cpu@1 {
