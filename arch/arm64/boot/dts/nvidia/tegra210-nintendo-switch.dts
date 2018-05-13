@@ -183,6 +183,40 @@
 				nvidia,enable-input = <TEGRA_PIN_ENABLE>;
 				nvidia,open-drain = <TEGRA_PIN_DISABLE>;
 			};
+			joycon_right_insert_tx {
+				nvidia,pins = "ph6";
+				nvidia,function = "rsvd0";
+				nvidia,pull = <TEGRA_PIN_PULL_UP>;
+				nvidia,tristate = <TEGRA_PIN_DISABLE>;
+				nvidia,enable-input = <TEGRA_PIN_ENABLE>;
+				nvidia,open-drain = <TEGRA_PIN_DISABLE>;
+			};
+
+			// Left side Joy-Con
+			uart3_tx {
+				nvidia,pins = "uart3_tx_pd1", "uart3_rts_pd3";
+				nvidia,function = "uartc";
+				nvidia,pull = <TEGRA_PIN_PULL_NONE>;
+				nvidia,tristate = <TEGRA_PIN_DISABLE>;
+				nvidia,enable-input = <TEGRA_PIN_DISABLE>;
+				nvidia,open-drain = <TEGRA_PIN_DISABLE>;
+			};
+			uart3_rx {
+				nvidia,pins = "uart3_rx_pd2", "uart3_cts_pd4";
+				nvidia,function = "uartc";
+				nvidia,pull = <TEGRA_PIN_PULL_UP>;
+				nvidia,tristate = <TEGRA_PIN_DISABLE>;
+				nvidia,enable-input = <TEGRA_PIN_ENABLE>;
+				nvidia,open-drain = <TEGRA_PIN_DISABLE>;
+			};
+			joycon_left_insert_tx {
+				nvidia,pins = "pe6";
+				nvidia,function = "rsvd0";
+				nvidia,pull = <TEGRA_PIN_PULL_UP>;
+				nvidia,tristate = <TEGRA_PIN_DISABLE>;
+				nvidia,enable-input = <TEGRA_PIN_ENABLE>;
+				nvidia,open-drain = <TEGRA_PIN_DISABLE>;
+			};
 
 			// SD card
 			sdmmc1_clk {
@@ -391,13 +425,25 @@
 	/* right joycon */
 	serial@70006040 {
 		status = "okay";
-		//compatible = "nvidia,tegra124-hsuart", "nvidia,tegra30-hsuart";
+		compatible = "nvidia,tegra124-hsuart", "nvidia,tegra30-hsuart";
+		nvidia,invert-txd;
+		nvidia,invert-rts;
+
+		joycon {
+			compatible = "nintendo,joycon-uart";
+		};
 	};
 
 	/* left joycon */
 	serial@70006200 {
 		status = "okay";
 		compatible = "nvidia,tegra124-hsuart", "nvidia,tegra30-hsuart";
+		nvidia,invert-txd;
+		nvidia,invert-rts;
+
+		joycon {
+			compatible = "nintendo,joycon-uart";
+		};
 	};
 
 	/* bluetooth */
