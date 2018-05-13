@@ -438,12 +438,12 @@
 	serial@70006200 {
 		status = "okay";
 		compatible = "nvidia,tegra124-hsuart", "nvidia,tegra30-hsuart";
-		nvidia,invert-txd;
-		nvidia,invert-rts;
+		// nvidia,invert-txd;
+		// nvidia,invert-rts;
 
-		joycon {
-			compatible = "nintendo,joycon-uart";
-		};
+		// joycon {
+		// 	compatible = "nintendo,joycon-uart";
+		// };
 	};
 
 	/* bluetooth */
