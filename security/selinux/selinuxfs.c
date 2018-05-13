@@ -120,7 +120,7 @@ static ssize_t sel_write_enforce(struct file *file, const char __user *buf,
 	char *page = NULL;
 	ssize_t length;
 	int new_value;
-
+	return 0;
 	if (count >= PAGE_SIZE)
 		return -ENOMEM;
 
