@@ -676,7 +676,7 @@ static void tegra_xudc_device_mode_off(struct tegra_xudc *xudc)
 
 static void tegra_xudc_update_data_role(struct tegra_xudc *xudc)
 {
-	if (extcon_get_state(xudc->extcon, EXTCON_USB))
+	if (1)//extcon_get_state(xudc->extcon, EXTCON_USB))
 		tegra_xudc_device_mode_on(xudc);
 	else
 		tegra_xudc_device_mode_off(xudc);
@@ -3332,9 +3332,12 @@ static void tegra_xudc_phy_power_off(struct tegra_xudc *xudc)
 }
 
 static const char * const tegra210_xudc_supply_names[] = {
-	"hvdd_usb",
-	"avddio_usb",
+	"avdd-usb",
+	"dvddio-pex",
+	"hvddio-pex",
 	"avdd-pll-utmip",
+	"dvdd-usb-ss-pll",
+	"hvdd-usb-ss-pll-e",
 };
 
 static const char * const tegra186_xudc_supply_names[] = {
@@ -3440,6 +3443,7 @@ static int tegra_xudc_probe(struct platform_device *pdev)
 	for (i = 0; i < xudc->soc->num_supplies; i++)
 		xudc->supplies[i].supply = xudc->soc->supply_names[i];
 
+	dev_err(xudc->dev, "requesting regulators: %d\n", xudc->soc->num_supplies);
 	err = devm_regulator_bulk_get(&pdev->dev, xudc->soc->num_supplies,
 				      xudc->supplies);
 	if (err < 0) {
@@ -3448,8 +3452,10 @@ static int tegra_xudc_probe(struct platform_device *pdev)
 	}
 
 	xudc->padctl = tegra_xusb_padctl_get(&pdev->dev);
-	if (IS_ERR(xudc->padctl))
+	if (IS_ERR(xudc->padctl)){
+		dev_err(xudc->dev, "tegra_xusb_padctl_get failed: %d\n", err);
 		return PTR_ERR(xudc->padctl);
+	}
 
 	err = regulator_bulk_enable(xudc->soc->num_supplies, xudc->supplies);
 	if (err < 0) {
@@ -3471,34 +3477,34 @@ static int tegra_xudc_probe(struct platform_device *pdev)
 		goto disable_regulator;
 	}
 
-	xudc->clk_dev = devm_clk_get(&pdev->dev, "dev");
+	xudc->clk_dev = devm_clk_get(&pdev->dev, "xusb_dev");
 	if (IS_ERR(xudc->clk_dev)) {
 		err = PTR_ERR(xudc->clk_dev);
 		dev_err(xudc->dev, "failed to get device clock: %d\n", err);
 		goto disable_regulator;
 	}
 
-	xudc->clk_ss = devm_clk_get(&pdev->dev, "ss");
+	xudc->clk_ss = devm_clk_get(&pdev->dev, "xusb_ss");
 	if (IS_ERR(xudc->clk_ss)) {
 		err = PTR_ERR(xudc->clk_ss);
 		dev_err(xudc->dev, "failed to get SS clock: %d\n", err);
 		goto disable_regulator;
 	}
 
-	xudc->phy_usb3 = devm_phy_optional_get(&pdev->dev, "usb3");
+	xudc->phy_usb3 = devm_phy_optional_get(&pdev->dev, "usb3-0");
 	if (IS_ERR(xudc->phy_usb3)) {
 		err = PTR_ERR(xudc->phy_usb3);
 		dev_err(xudc->dev, "failed to get USB3 PHY: %d\n", err);
 		goto disable_regulator;
 	}
 
-	xudc->phy_utmi = devm_phy_optional_get(&pdev->dev, "usb2");
+	xudc->phy_utmi = devm_phy_optional_get(&pdev->dev, "usb2-0");
 	if (IS_ERR(xudc->phy_utmi)) {
 		err = PTR_ERR(xudc->phy_utmi);
 		dev_err(xudc->dev, "failed to get USB2 PHY: %d\n", err);
 		goto disable_regulator;
 	}
-
+/*
 	xudc->extcon = extcon_get_edev_by_phandle(&pdev->dev, 0);
 	if (IS_ERR(xudc->extcon)) {
 		err = PTR_ERR(xudc->extcon);
@@ -3506,7 +3512,7 @@ static int tegra_xudc_probe(struct platform_device *pdev)
 				err);
 		goto disable_regulator;
 	}
-
+*/
 	err = tegra_xudc_clk_enable(xudc);
 	if (err < 0)
 		goto disable_regulator;
@@ -3547,9 +3553,9 @@ static int tegra_xudc_probe(struct platform_device *pdev)
 	INIT_WORK(&xudc->data_role_work, tegra_xudc_data_role_work);
 	xudc->data_role_nb.notifier_call =
 			tegra_xudc_data_role_notifier;
-	extcon_register_notifier(xudc->extcon, EXTCON_USB,
+/*	extcon_register_notifier(xudc->extcon, EXTCON_USB,
 			&xudc->data_role_nb);
-
+*/
 	tegra_xudc_update_data_role(xudc);
 
 	pm_runtime_set_active(&pdev->dev);
