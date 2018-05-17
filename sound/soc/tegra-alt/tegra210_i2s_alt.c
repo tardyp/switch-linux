@@ -169,8 +169,8 @@ static int tegra210_i2s_get_status(struct tegra210_i2s *i2s,
 static int tegra210_i2s_rx_stop(struct snd_soc_dapm_widget *w,
 				struct snd_kcontrol *kcontrol, int event)
 {
-	struct snd_soc_codec *codec = snd_soc_dapm_to_codec(w->dapm);
-	struct device *dev = codec->dev;
+	struct snd_soc_component *component = snd_soc_dapm_to_component(w->dapm);
+	struct device *dev = component->dev;
 	struct tegra210_i2s *i2s = dev_get_drvdata(dev);
 	int dcnt = 10, ret;
 
@@ -192,8 +192,8 @@ static int tegra210_i2s_rx_stop(struct snd_soc_dapm_widget *w,
 static int tegra210_i2s_tx_stop(struct snd_soc_dapm_widget *w,
 				struct snd_kcontrol *kcontrol, int event)
 {
-	struct snd_soc_codec *codec = snd_soc_dapm_to_codec(w->dapm);
-	struct device *dev = codec->dev;
+	struct snd_soc_component *component = snd_soc_dapm_to_component(w->dapm);
+	struct device *dev = component->dev;
 	struct tegra210_i2s *i2s = dev_get_drvdata(dev);
 	int dcnt = 10, ret;
 
@@ -516,11 +516,11 @@ static int tegra210_i2s_hw_params(struct snd_pcm_substream *substream,
 	return 0;
 }
 
-static int tegra210_i2s_codec_probe(struct snd_soc_codec *codec)
+static int tegra210_i2s_component_probe(struct snd_soc_component *component)
 {
-	struct tegra210_i2s *i2s = snd_soc_codec_get_drvdata(codec);
+	struct tegra210_i2s *i2s = snd_soc_component_get_drvdata(component);
 
-	codec->control_data = i2s->regmap;
+	component->regmap = i2s->regmap;
 
 	return 0;
 }
@@ -586,8 +586,8 @@ static struct snd_soc_dai_driver tegra210_i2s_dais[] = {
 static int tegra210_i2s_loopback_get(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_value *ucontrol)
 {
-	struct snd_soc_codec *codec = snd_soc_kcontrol_codec(kcontrol);
-	struct tegra210_i2s *i2s = snd_soc_codec_get_drvdata(codec);
+	struct snd_soc_component *component = snd_soc_kcontrol_component(kcontrol);
+	struct tegra210_i2s *i2s = snd_soc_component_get_drvdata(component);
 
 	ucontrol->value.integer.value[0] = i2s->loopback;
 
@@ -597,16 +597,16 @@ static int tegra210_i2s_loopback_get(struct snd_kcontrol *kcontrol,
 static int tegra210_i2s_loopback_put(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_value *ucontrol)
 {
-	struct snd_soc_codec *codec = snd_soc_kcontrol_codec(kcontrol);
-	struct tegra210_i2s *i2s = snd_soc_codec_get_drvdata(codec);
+	struct snd_soc_component *component = snd_soc_kcontrol_component(kcontrol);
+	struct tegra210_i2s *i2s = snd_soc_component_get_drvdata(component);
 
 	i2s->loopback = ucontrol->value.integer.value[0];
 
-	pm_runtime_get_sync(codec->dev);
+	pm_runtime_get_sync(component->dev);
 	regmap_update_bits(i2s->regmap, TEGRA210_I2S_CTRL,
 		TEGRA210_I2S_CTRL_LPBK_MASK,
 		i2s->loopback << TEGRA210_I2S_CTRL_LPBK_SHIFT);
-	pm_runtime_put(codec->dev);
+	pm_runtime_put(component->dev);
 
 	return 0;
 }
@@ -639,15 +639,15 @@ static const struct snd_soc_dapm_route tegra210_i2s_routes[] = {
 	{ "CIF Transmit", NULL, "CIF TX" },
 };
 
-static struct snd_soc_codec_driver tegra210_i2s_codec = {
-	.probe = tegra210_i2s_codec_probe,
+static struct snd_soc_component_driver tegra210_i2s_component = {
+	.probe = tegra210_i2s_component_probe,
 	.dapm_widgets = tegra210_i2s_widgets,
 	.num_dapm_widgets = ARRAY_SIZE(tegra210_i2s_widgets),
 	.dapm_routes = tegra210_i2s_routes,
 	.num_dapm_routes = ARRAY_SIZE(tegra210_i2s_routes),
 	.controls = tegra210_i2s_controls,
 	.num_controls = ARRAY_SIZE(tegra210_i2s_controls),
-	.idle_bias_off = 1,
+	.idle_bias_on = 0,
 };
 
 static bool tegra210_i2s_wr_reg(struct device *dev, unsigned int reg)
@@ -938,7 +938,7 @@ err_dap:
 			goto err_pm_disable;
 	}
 
-	ret = snd_soc_register_codec(&pdev->dev, &tegra210_i2s_codec,
+	ret = snd_soc_register_component(&pdev->dev, &tegra210_i2s_component,
 				     tegra210_i2s_dais,
 				     ARRAY_SIZE(tegra210_i2s_dais));
 	if (ret != 0) {
@@ -969,7 +969,7 @@ static int tegra210_i2s_platform_remove(struct platform_device *pdev)
 {
 	struct tegra210_i2s *i2s = dev_get_drvdata(&pdev->dev);
 
-	snd_soc_unregister_codec(&pdev->dev);
+	snd_soc_unregister_component(&pdev->dev);
 
 	pm_runtime_disable(&pdev->dev);
 	if (!pm_runtime_status_suspended(&pdev->dev))

@@ -155,14 +155,14 @@ static int tegra210_ope_hw_params(struct snd_pcm_substream *substream,
 	return ret;
 }
 
-static int tegra210_ope_codec_probe(struct snd_soc_codec *codec)
+static int tegra210_ope_component_probe(struct snd_soc_component *component)
 {
-	struct tegra210_ope *ope = snd_soc_codec_get_drvdata(codec);
+	struct tegra210_ope *ope = snd_soc_component_get_drvdata(component);
 
-	codec->control_data = ope->regmap;
+	component->regmap = ope->regmap;
 
-	ope->soc_data->peq_soc_data.codec_init(codec);
-	ope->soc_data->mbdrc_soc_data.codec_init(codec);
+	ope->soc_data->peq_soc_data.component_init(component);
+	ope->soc_data->mbdrc_soc_data.component_init(component);
 
 	return 0;
 }
@@ -219,15 +219,15 @@ static const struct snd_kcontrol_new tegra210_ope_controls[] = {
 				TEGRA210_OPE_DIRECTION_SHIFT, 1, 0),
 };
 
-static struct snd_soc_codec_driver tegra210_ope_codec = {
-	.probe = tegra210_ope_codec_probe,
+static struct snd_soc_component_driver tegra210_ope_component = {
+	.probe = tegra210_ope_component_probe,
 	.dapm_widgets = tegra210_ope_widgets,
 	.num_dapm_widgets = ARRAY_SIZE(tegra210_ope_widgets),
 	.dapm_routes = tegra210_ope_routes,
 	.num_dapm_routes = ARRAY_SIZE(tegra210_ope_routes),
 	.controls = tegra210_ope_controls,
 	.num_controls = ARRAY_SIZE(tegra210_ope_controls),
-	.idle_bias_off = 1,
+	.idle_bias_on = 0,
 };
 
 static bool tegra210_ope_wr_reg(struct device *dev, unsigned int reg)
@@ -319,11 +319,11 @@ static const struct tegra210_ope_soc_data soc_data_tegra210 = {
 	.set_audio_cif = tegra210_xbar_set_cif,
 	.peq_soc_data = {
 		.init = tegra210_peq_init,
-		.codec_init = tegra210_peq_codec_init,
+		.component_init = tegra210_peq_component_init,
 	},
 	.mbdrc_soc_data = {
 		.init = tegra210_mbdrc_init,
-		.codec_init = tegra210_mbdrc_codec_init,
+		.component_init = tegra210_mbdrc_component_init,
 	},
 };
 
@@ -424,7 +424,7 @@ static int tegra210_ope_platform_probe(struct platform_device *pdev)
 			goto err_pm_disable;
 	}
 
-	ret = snd_soc_register_codec(&pdev->dev, &tegra210_ope_codec,
+	ret = snd_soc_register_component(&pdev->dev, &tegra210_ope_component,
 				     tegra210_ope_dais,
 				     ARRAY_SIZE(tegra210_ope_dais));
 	if (ret != 0) {
@@ -447,7 +447,7 @@ err:
 
 static int tegra210_ope_platform_remove(struct platform_device *pdev)
 {
-	snd_soc_unregister_codec(&pdev->dev);
+	snd_soc_unregister_component(&pdev->dev);
 
 	pm_runtime_disable(&pdev->dev);
 	if (!pm_runtime_status_suspended(&pdev->dev))

@@ -461,19 +461,6 @@ static int tegra210_admaif_dai_probe(struct snd_soc_dai *dai)
 		.ops = &tegra210_admaif_dai_ops,			\
 	}
 
-static struct snd_soc_dai_driver tegra210_admaif_dais[10] = {
-	ADMAIF_DAI(1),
-	ADMAIF_DAI(2),
-	ADMAIF_DAI(3),
-	ADMAIF_DAI(4),
-	ADMAIF_DAI(5),
-	ADMAIF_DAI(6),
-	ADMAIF_DAI(7),
-	ADMAIF_DAI(8),
-	ADMAIF_DAI(9),
-	ADMAIF_DAI(10),
-};
-
 #define ADMAIF_CODEC_FIFO_DAI(id)					\
 	{								\
 		.name = "ADMAIF" #id " FIFO",				\
@@ -525,7 +512,17 @@ static struct snd_soc_dai_driver tegra210_admaif_dais[10] = {
 		},							\
 	}
 
-static struct snd_soc_dai_driver tegra210_admaif_codec_dais[] = {
+static struct snd_soc_dai_driver tegra210_admaif_dais[30] = {
+	ADMAIF_DAI(1),
+	ADMAIF_DAI(2),
+	ADMAIF_DAI(3),
+	ADMAIF_DAI(4),
+	ADMAIF_DAI(5),
+	ADMAIF_DAI(6),
+	ADMAIF_DAI(7),
+	ADMAIF_DAI(8),
+	ADMAIF_DAI(9),
+	ADMAIF_DAI(10),
 	ADMAIF_CODEC_FIFO_DAI(1),
 	ADMAIF_CODEC_FIFO_DAI(2),
 	ADMAIF_CODEC_FIFO_DAI(3),
@@ -592,26 +589,23 @@ static const struct snd_soc_dapm_route tegra210_admaif_routes[] = {
 	ADMAIF_ROUTES(10)
 };
 
-static int tegra210_admaif_codec_probe(struct snd_soc_codec *codec)
+static int tegra210_admaif_component_probe(struct snd_soc_component *component)
 {
-	struct tegra210_admaif *admaif = snd_soc_codec_get_drvdata(codec);
+	struct tegra210_admaif *admaif = snd_soc_component_get_drvdata(component);
 
-	codec->control_data = admaif->regmap;
+	component->regmap = admaif->regmap;
 
 	return 0;
 }
 
-static struct snd_soc_codec_driver tegra210_admaif_codec = {
-	.probe = tegra210_admaif_codec_probe,
+static struct snd_soc_component_driver tegra210_admaif_dai_driver = {
+	.name = DRV_NAME,
+	.probe = tegra210_admaif_component_probe,
 	.dapm_widgets = tegra210_admaif_widgets,
 	.num_dapm_widgets = ARRAY_SIZE(tegra210_admaif_widgets),
 	.dapm_routes = tegra210_admaif_routes,
 	.num_dapm_routes = ARRAY_SIZE(tegra210_admaif_routes),
-	.idle_bias_off = 1,
-};
-
-static const struct snd_soc_component_driver tegra210_admaif_dai_driver = {
-	.name		= DRV_NAME,
+	.idle_bias_on = 0,
 };
 
 static struct tegra210_admaif_soc_data soc_data_tegra210 = {
@@ -752,18 +746,10 @@ static int tegra210_admaif_probe(struct platform_device *pdev)
 		goto err_suspend;
 	}
 
-	ret = snd_soc_register_codec(&pdev->dev, &tegra210_admaif_codec,
-				tegra210_admaif_codec_dais,
-				ARRAY_SIZE(tegra210_admaif_codec_dais));
-	if (ret != 0) {
-		dev_err(&pdev->dev, "Could not register CODEC: %d\n", ret);
-		goto err_unregister_dais;
-	}
-
 	ret = tegra_alt_pcm_platform_register(&pdev->dev);
 	if (ret) {
 		dev_err(&pdev->dev, "Could not register PCM: %d\n", ret);
-		goto err_unregister_codec;
+		goto err_unregister_dais;
 	}
 
 	regmap_update_bits(admaif->regmap,
@@ -771,8 +757,6 @@ static int tegra210_admaif_probe(struct platform_device *pdev)
 
 	return 0;
 
-err_unregister_codec:
-	snd_soc_unregister_codec(&pdev->dev);
 err_unregister_dais:
 	snd_soc_unregister_component(&pdev->dev);
 err_suspend:
@@ -787,8 +771,6 @@ err:
 static int tegra210_admaif_remove(struct platform_device *pdev)
 {
 	snd_soc_unregister_component(&pdev->dev);
-
-	snd_soc_unregister_codec(&pdev->dev);
 
 	tegra_alt_pcm_platform_unregister(&pdev->dev);
 

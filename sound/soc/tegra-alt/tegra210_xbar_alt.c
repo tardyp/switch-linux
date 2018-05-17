@@ -96,9 +96,9 @@ static int tegra210_xbar_suspend(struct device *dev)
 }
 #endif
 
-static int tegra210_xbar_codec_probe(struct snd_soc_codec *codec)
+static int tegra210_xbar_component_probe(struct snd_soc_component *component)
 {
-	codec->control_data = xbar->regmap;
+	component->regmap = xbar->regmap;
 
 	return 0;
 }
@@ -327,7 +327,7 @@ static const int tegra210_xbar_mux_values[] = {
 static int tegra210_xbar_get_value_enum(struct snd_kcontrol *kcontrol,
 			struct snd_ctl_elem_value *ucontrol)
 {
-	struct snd_soc_codec *codec = snd_soc_dapm_kcontrol_codec(kcontrol);
+	struct snd_soc_component *component = snd_soc_dapm_kcontrol_component(kcontrol);
 	struct soc_enum *e = (struct soc_enum *)kcontrol->private_value;
 	unsigned int reg_count, reg_val, val, bit_pos = 0, i;
 	unsigned int reg[TEGRA210_XBAR_UPDATE_MAX_REG];
@@ -338,13 +338,16 @@ static int tegra210_xbar_get_value_enum(struct snd_kcontrol *kcontrol,
 		return -EINVAL;
 
 	for (i = 0; i < reg_count; i++) {
+		int ret;
 		reg[i] = (e->reg +
 			xbar->soc_data->reg_offset * i);
-		reg_val = snd_soc_read(codec, reg[i]);
+		ret = snd_soc_component_read(component, reg[i], &reg_val);
+		if (ret < 0)
+            return ret;
 		val = reg_val & xbar->soc_data->mask[i];
 		if (val != 0) {
 			bit_pos = ffs(val) +
-					(8*codec->component.val_bytes * i);
+					(8*component->val_bytes * i);
 			break;
 		}
 	}
@@ -362,7 +365,7 @@ static int tegra210_xbar_get_value_enum(struct snd_kcontrol *kcontrol,
 static int tegra210_xbar_put_value_enum(struct snd_kcontrol *kcontrol,
 			struct snd_ctl_elem_value *ucontrol)
 {
-	struct snd_soc_codec *codec = snd_soc_dapm_kcontrol_codec(kcontrol);
+	struct snd_soc_component *component = snd_soc_dapm_kcontrol_component(kcontrol);
 	struct snd_soc_dapm_context *dapm =
 				snd_soc_dapm_kcontrol_dapm(kcontrol);
 	struct soc_enum *e = (struct soc_enum *)kcontrol->private_value;
@@ -383,15 +386,15 @@ static int tegra210_xbar_put_value_enum(struct snd_kcontrol *kcontrol,
 
 	if (value) {
 		/* get the register index and value to set */
-		reg_idx = (value - 1) / (8 * codec->component.val_bytes);
-		bit_pos = (value - 1) % (8 * codec->component.val_bytes);
+		reg_idx = (value - 1) / (8 * component->val_bytes);
+		bit_pos = (value - 1) % (8 * component->val_bytes);
 		reg_val = BIT(bit_pos);
 	}
 
 	for (i = 0; i < reg_count; i++) {
 		reg[i] = e->reg + xbar->soc_data->reg_offset * i;
 		if (i == reg_idx) {
-			change |= snd_soc_test_bits(codec, reg[i],
+			change |= snd_soc_component_test_bits(component, reg[i],
 							mask[i], reg_val);
 			/* set the selected register */
 			update[reg_count - 1].reg = reg[reg_idx];
@@ -400,7 +403,7 @@ static int tegra210_xbar_put_value_enum(struct snd_kcontrol *kcontrol,
 		} else {
 			/* accumulate the change to update the DAPM path
 			    when none is selected */
-			change |= snd_soc_test_bits(codec, reg[i],
+			change |= snd_soc_component_test_bits(component, reg[i],
 							mask[i], 0);
 
 			/* clear the register when not selected */
@@ -506,7 +509,7 @@ MUX_ENUM_CTRL_DECL(adx2_tx, 0x59);
 
 /*
  * The number of entries in, and order of, this array is closely tied to the
- * calculation of tegra210_xbar_codec.num_dapm_widgets near the end of
+ * calculation of tegra210_xbar_component.num_dapm_widgets near the end of
  * tegra210_xbar_probe()
  */
 static const struct snd_soc_dapm_widget tegra210_xbar_widgets[] = {
@@ -646,7 +649,7 @@ static const struct snd_soc_dapm_widget tegra210_xbar_widgets[] = {
 
 /*
  * The number of entries in, and order of, this array is closely tied to the
- * calculation of tegra210_xbar_codec.num_dapm_routes near the end of
+ * calculation of tegra210_xbar_component.num_dapm_routes near the end of
  * tegra210_xbar_probe()
  */
 static const struct snd_soc_dapm_route tegra210_xbar_routes[] = {
@@ -721,13 +724,13 @@ static const struct snd_soc_dapm_route tegra210_xbar_routes[] = {
 	IN_OUT_ROUTES("ADX2-4")
 };
 
-static struct snd_soc_codec_driver tegra210_xbar_codec = {
-	.probe = tegra210_xbar_codec_probe,
+static struct snd_soc_component_driver tegra210_xbar_component = {
+	.probe = tegra210_xbar_component_probe,
 	.dapm_widgets = tegra210_xbar_widgets,
 	.dapm_routes = tegra210_xbar_routes,
 	.num_dapm_widgets = ARRAY_SIZE(tegra210_xbar_widgets),
 	.num_dapm_routes = ARRAY_SIZE(tegra210_xbar_routes),
-	.idle_bias_off = 1,
+	.idle_bias_on = 0,
 };
 
 static const struct tegra210_xbar_soc_data soc_data_tegra210 = {
@@ -821,7 +824,7 @@ static int tegra210_xbar_probe(struct platform_device *pdev)
 	 */
 	for (i = 0; i < ARRAY_SIZE(configlink_clocks); i++) {
 		// TODO: should match against rst_name, but they're the same
-		rst = reset_control_get(&pdev->dev, configlink_clocks[i].clk_name);
+		rst = devm_reset_control_get(&pdev->dev, configlink_clocks[i].clk_name);
 		if (IS_ERR(rst)) {
 			dev_err(&pdev->dev, "Can't get reset %s\n",
 				configlink_clocks[i].clk_name);
@@ -918,7 +921,7 @@ static int tegra210_xbar_probe(struct platform_device *pdev)
 			goto err_pm_disable;
 	}
 
-	ret = snd_soc_register_codec(&pdev->dev, &tegra210_xbar_codec,
+	ret = snd_soc_register_component(&pdev->dev, &tegra210_xbar_component,
 				tegra210_xbar_dais, ARRAY_SIZE(tegra210_xbar_dais));
 	if (ret != 0) {
 		dev_err(&pdev->dev, "Could not register CODEC: %d\n", ret);
@@ -948,7 +951,7 @@ err:
 
 static int tegra210_xbar_remove(struct platform_device *pdev)
 {
-	snd_soc_unregister_codec(&pdev->dev);
+	snd_soc_unregister_component(&pdev->dev);
 
 	pm_runtime_disable(&pdev->dev);
 	if (!pm_runtime_status_suspended(&pdev->dev))

@@ -235,11 +235,11 @@ static int tegra210_afc_hw_params(struct snd_pcm_substream *substream,
 
 }
 
-static int tegra210_afc_codec_probe(struct snd_soc_codec *codec)
+static int tegra210_afc_component_probe(struct snd_soc_component *component)
 {
-	struct tegra210_afc *afc = snd_soc_codec_get_drvdata(codec);
+	struct tegra210_afc *afc = snd_soc_component_get_drvdata(component);
 
-	codec->control_data = afc->regmap;
+	component->regmap = afc->regmap;
 
 	return 0;
 }
@@ -285,13 +285,13 @@ static const struct snd_soc_dapm_route tegra210_afc_routes[] = {
 	{ "AFC Transmit", NULL, "AFC TX" },
 };
 
-static struct snd_soc_codec_driver tegra210_afc_codec = {
-	.probe = tegra210_afc_codec_probe,
+static struct snd_soc_component_driver tegra210_afc_component = {
+	.probe = tegra210_afc_component_probe,
 	.dapm_widgets = tegra210_afc_widgets,
 	.num_dapm_widgets = ARRAY_SIZE(tegra210_afc_widgets),
 	.dapm_routes = tegra210_afc_routes,
 	.num_dapm_routes = ARRAY_SIZE(tegra210_afc_routes),
-	.idle_bias_off = 1,
+	.idle_bias_on = 0,
 };
 
 static bool tegra210_afc_wr_rd_reg(struct device *dev, unsigned int reg)
@@ -447,7 +447,7 @@ static int tegra210_afc_platform_probe(struct platform_device *pdev)
 	regmap_write(afc->regmap, TEGRA210_AFC_CG, 0);
 	regcache_cache_only(afc->regmap, true);
 
-	ret = snd_soc_register_codec(&pdev->dev, &tegra210_afc_codec,
+	ret = snd_soc_register_component(&pdev->dev, &tegra210_afc_component,
 				     tegra210_afc_dais,
 				     ARRAY_SIZE(tegra210_afc_dais));
 	if (ret != 0) {
@@ -468,7 +468,7 @@ err:
 
 static int tegra210_afc_platform_remove(struct platform_device *pdev)
 {
-	snd_soc_unregister_codec(&pdev->dev);
+	snd_soc_unregister_component(&pdev->dev);
 
 	pm_runtime_disable(&pdev->dev);
 	if (!pm_runtime_status_suspended(&pdev->dev))

@@ -132,12 +132,12 @@ static int tegra210_mvc_put_vol(struct snd_kcontrol *kcontrol,
 {
 	struct soc_mixer_control *mc =
 		(struct soc_mixer_control *)kcontrol->private_value;
-	struct snd_soc_codec *codec = snd_soc_kcontrol_codec(kcontrol);
-	struct tegra210_mvc *mvc = snd_soc_codec_get_drvdata(codec);
+	struct snd_soc_component *component = snd_soc_kcontrol_component(kcontrol);
+	struct tegra210_mvc *mvc = snd_soc_component_get_drvdata(component);
 	unsigned int reg = mc->reg;
 	unsigned int ret, value, wait = 0xffff;
 
-	pm_runtime_get_sync(codec->dev);
+	pm_runtime_get_sync(component->dev);
 	/* check if VOLUME_SWITCH is triggered*/
 	do {
 		regmap_read(mvc->regmap,
@@ -158,7 +158,7 @@ static int tegra210_mvc_put_vol(struct snd_kcontrol *kcontrol,
 	ret |= regmap_update_bits(mvc->regmap, TEGRA210_MVC_SWITCH,
 			TEGRA210_MVC_VOLUME_SWITCH_MASK,
 			TEGRA210_MVC_VOLUME_SWITCH_TRIGGER);
-	pm_runtime_put(codec->dev);
+	pm_runtime_put(component->dev);
 
 	return ret;
 }
@@ -248,11 +248,11 @@ static int tegra210_mvc_hw_params(struct snd_pcm_substream *substream,
 	return ret;
 }
 
-static int tegra210_mvc_codec_probe(struct snd_soc_codec *codec)
+static int tegra210_mvc_component_probe(struct snd_soc_component *component)
 {
-	struct tegra210_mvc *mvc = snd_soc_codec_get_drvdata(codec);
+	struct tegra210_mvc *mvc = snd_soc_component_get_drvdata(component);
 
-	codec->control_data = mvc->regmap;
+	component->regmap = mvc->regmap;
 
 	return 0;
 }
@@ -311,15 +311,15 @@ static const struct snd_soc_dapm_route tegra210_mvc_routes[] = {
 	{ "MVC Transmit", NULL, "MVC TX" },
 };
 
-static struct snd_soc_codec_driver tegra210_mvc_codec = {
-	.probe = tegra210_mvc_codec_probe,
+static struct snd_soc_component_driver tegra210_mvc_component = {
+	.probe = tegra210_mvc_component_probe,
 	.dapm_widgets = tegra210_mvc_widgets,
 	.num_dapm_widgets = ARRAY_SIZE(tegra210_mvc_widgets),
 	.dapm_routes = tegra210_mvc_routes,
 	.num_dapm_routes = ARRAY_SIZE(tegra210_mvc_routes),
 	.controls = tegra210_mvc_vol_ctrl,
 	.num_controls = ARRAY_SIZE(tegra210_mvc_vol_ctrl),
-	.idle_bias_off = 1,
+	.idle_bias_on = 0,
 };
 
 static bool tegra210_mvc_wr_rd_reg(struct device *dev, unsigned int reg)
@@ -501,7 +501,7 @@ static int tegra210_mvc_platform_probe(struct platform_device *pdev)
 			goto err_pm_disable;
 	}
 
-	ret = snd_soc_register_codec(&pdev->dev, &tegra210_mvc_codec,
+	ret = snd_soc_register_component(&pdev->dev, &tegra210_mvc_component,
 				     tegra210_mvc_dais,
 				     ARRAY_SIZE(tegra210_mvc_dais));
 	if (ret != 0) {
@@ -522,7 +522,7 @@ err:
 
 static int tegra210_mvc_platform_remove(struct platform_device *pdev)
 {
-	snd_soc_unregister_codec(&pdev->dev);
+	snd_soc_unregister_component(&pdev->dev);
 
 	pm_runtime_disable(&pdev->dev);
 	if (!pm_runtime_status_suspended(&pdev->dev))

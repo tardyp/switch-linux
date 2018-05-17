@@ -154,12 +154,12 @@ static int tegra210_mixer_put_gain(struct snd_kcontrol *kcontrol,
 {
 	struct soc_mixer_control *mc =
 		(struct soc_mixer_control *)kcontrol->private_value;
-	struct snd_soc_codec *codec = snd_soc_kcontrol_codec(kcontrol);
-	struct tegra210_mixer *mixer = snd_soc_codec_get_drvdata(codec);
+	struct snd_soc_component *component = snd_soc_kcontrol_component(kcontrol);
+	struct tegra210_mixer *mixer = snd_soc_component_get_drvdata(component);
 	unsigned int reg = mc->reg;
 	unsigned int ret, i;
 
-	pm_runtime_get_sync(codec->dev);
+	pm_runtime_get_sync(component->dev);
 	/* write default gain config poly coefficients */
 	for (i = 0; i < 10; i++)
 		tegra210_mixer_write_ram(mixer, reg + i, mixer->gain_coeff[i]);
@@ -179,7 +179,7 @@ static int tegra210_mixer_put_gain(struct snd_kcontrol *kcontrol,
 				ucontrol->value.integer.value[0]);
 	ret |= tegra210_mixer_write_ram(mixer, reg + 0x0f,
 				ucontrol->value.integer.value[0]);
-	pm_runtime_put(codec->dev);
+	pm_runtime_put(component->dev);
 
 	/* save gain */
 	i = (reg - TEGRA210_MIXER_AHUBRAMCTL_GAIN_CONFIG_RAM_ADDR_0) /
@@ -272,11 +272,11 @@ static int tegra210_mixer_out_hw_params(struct snd_pcm_substream *substream,
 	return ret;
 }
 
-static int tegra210_mixer_codec_probe(struct snd_soc_codec *codec)
+static int tegra210_mixer_component_probe(struct snd_soc_component *component)
 {
-	struct tegra210_mixer *mixer = snd_soc_codec_get_drvdata(codec);
+	struct tegra210_mixer *mixer = snd_soc_component_get_drvdata(component);
 
-	codec->control_data = mixer->regmap;
+	component->regmap = mixer->regmap;
 
 	return 0;
 }
@@ -473,15 +473,15 @@ static const struct snd_soc_dapm_route tegra210_mixer_routes[] = {
 	{ "TX5 Transmit",	NULL,	"TX5" },
 };
 
-static struct snd_soc_codec_driver tegra210_mixer_codec = {
-	.probe = tegra210_mixer_codec_probe,
+static struct snd_soc_component_driver tegra210_mixer_component = {
+	.probe = tegra210_mixer_component_probe,
 	.dapm_widgets = tegra210_mixer_widgets,
 	.num_dapm_widgets = ARRAY_SIZE(tegra210_mixer_widgets),
 	.dapm_routes = tegra210_mixer_routes,
 	.num_dapm_routes = ARRAY_SIZE(tegra210_mixer_routes),
 	.controls = tegra210_mixer_gain_ctls,
 	.num_controls = ARRAY_SIZE(tegra210_mixer_gain_ctls),
-	.idle_bias_off = 1,
+	.idle_bias_on = 0,
 };
 
 static bool tegra210_mixer_wr_reg(struct device *dev,
@@ -723,7 +723,7 @@ static int tegra210_mixer_platform_probe(struct platform_device *pdev)
 			goto err_pm_disable;
 	}
 
-	ret = snd_soc_register_codec(&pdev->dev, &tegra210_mixer_codec,
+	ret = snd_soc_register_component(&pdev->dev, &tegra210_mixer_component,
 				     tegra210_mixer_dais,
 				     ARRAY_SIZE(tegra210_mixer_dais));
 	if (ret != 0) {
@@ -744,7 +744,7 @@ err:
 
 static int tegra210_mixer_platform_remove(struct platform_device *pdev)
 {
-	snd_soc_unregister_codec(&pdev->dev);
+	snd_soc_unregister_component(&pdev->dev);
 
 	pm_runtime_disable(&pdev->dev);
 	if (!pm_runtime_status_suspended(&pdev->dev))
