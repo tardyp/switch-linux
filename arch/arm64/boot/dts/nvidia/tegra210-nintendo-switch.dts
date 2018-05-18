@@ -447,7 +447,7 @@
 		status = "okay";
 		clock-frequency = <100000>;
 
-		audio-codec@1c {
+		rt5639: audio-codec@1c {
 			compatible = "realtek,rt5639";
 			reg = <0x1c>;
 			interrupt-parent = <&gpio>;
@@ -977,7 +977,50 @@
 			clock-frequency = <32768>;
 		};
 	};
-
+	sound: sound {
+		compatible = "nvidia,tegra-audio-t210-switch";
+		nvidia,model = "tegra-snd-t210-switch";
+		// nvidia,spkr-en-gpios = <&rt5677 4 GPIO_ACTIVE_HIGH>;
+		// nvidia,dmic-clk-en-gpios = <&rt5677 2 GPIO_ACTIVE_HIGH>;
+		nvidia,num-codec-link = <1>;
+		edp-consumer-name = "codec+speaker";
+		clocks = <&tegra_car TEGRA210_CLK_PLL_A>,
+		         <&tegra_car TEGRA210_CLK_PLL_A_OUT0>,
+		         <&tegra_car TEGRA210_CLK_EXTERN1>,
+		         <&tegra_car TEGRA210_CLK_CLK_OUT_1>,
+		         <&tegra_car TEGRA210_CLK_EXTERN2>,
+		         <&tegra_car TEGRA210_CLK_CLK_OUT_2>;
+		clock-names = "pll_a", "pll_a_out0", "extern1", "clk_out_1", "extern2", "clk_out_2";
+		nvidia,audio-routing =
+			"Headphone Jack", "HPOL",
+			"Headphone Jack", "HPOR",
+			"MICBIAS",  "Mic Jack",
+			"MIC", "Mic Jack",
+			"DMIC L1", "Int Mic",
+			"DMIC R1", "Int Mic",
+			"DMIC L2", "Int Mic",
+			"DMIC R2", "Int Mic",
+			"Int Spk", "Speaker";
+		nvidia,xbar = <&tegra_axbar>;
+		nvidia,dai-link-1 {
+			link-name = "rt5639-playback";
+			cpu-dai = <&tegra_i2s1>;
+			codec-dai = <&rt5639>;
+			cpu-dai-name = "I2S1";
+			codec-dai-name = "rt5639-aif1";
+			tx-mask = <0xFF>;
+			rx-mask = <0xFF>;
+			format = "dsp_a";
+			bitclock-slave;
+			frame-slave;
+			bitclock-noninversion;
+			frame-inversion;
+			bit-format = "s16_le";
+			bclk_ratio = <0>;
+			srate = <48000>;
+			num-channel = <4>;
+		};
+	};
 	gpio-keys {
 		compatible = "gpio-keys";
 		label = "gpio-keys";
