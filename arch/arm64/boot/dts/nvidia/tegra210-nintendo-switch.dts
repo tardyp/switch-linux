@@ -1002,6 +1002,7 @@
 			"DMIC R2", "Int Mic",
 			"Int Spk", "Speaker";
 		nvidia,xbar = <&tegra_axbar>;
+		nvidia,hp-det-gpios = <&gpio TEGRA_GPIO(X, 8) GPIO_ACTIVE_LOW>;
 		nvidia,dai-link-1 {
 			link-name = "rt5639-playback";
 			cpu-dai = <&tegra_i2s1>;
