@@ -50,6 +50,7 @@ struct tegra_bpmp_channel {
 	struct tegra_bpmp_mb_data *ob;
 	struct completion completion;
 	struct tegra_ivc *ivc;
+	int nr;
 };
 
 typedef void (*tegra_bpmp_mrq_handler_t)(unsigned int mrq,
