@@ -1339,6 +1339,21 @@
 		status = "okay";
 	};
 
+	extcon_usb: extcon_vbus {
+		compatible = "linux,extcon-usb-gpio";
+		vbus-gpio = <&gpio TEGRA_GPIO(Z, 0) 1>;
+	};
+
+	xudc@700d0000 {
+		phys = <&{/padctl@7009f000/pads/usb2/lanes/usb2-0}>;
+		phy-names = "usb2";
+		avddio_usb-supply = <&vdd_pex_1v05>;
+		hvdd_usb-supply = <&vdd_3v3_sys>;
+		avdd_pll_utmip-supply = <&vdd_1v8>;
+		extcon = <&extcon_usb>;
+		status = "okay";
+	};
+
 	sata@70020000 {
 		status = "okay";
 		phys = <&{/padctl@7009f000/pads/sata/lanes/sata-0}>;
