@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2015, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2014-2018, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -546,8 +546,25 @@ static int tegra_xusb_usb2_port_parse_dt(struct tegra_xusb_usb2_port *usb2)
 {
 	struct tegra_xusb_port *port = &usb2->base;
 	struct device_node *np = port->dev.of_node;
+	const char *prop_string;
+	u32 value;
 
 	usb2->internal = of_property_read_bool(np, "nvidia,internal");
+
+	usb2->port_cap = USB_PORT_DISABLED; /* default */
+	if (!of_property_read_string(np, "mode", &prop_string)) {
+		if (!strcmp("host", prop_string))
+			usb2->port_cap = USB_HOST_CAP;
+		else if (!strcmp("device", prop_string))
+			usb2->port_cap = USB_DEVICE_CAP;
+		else if (!strcmp("otg", prop_string))
+			usb2->port_cap = USB_OTG_CAP;
+	}
+
+	if (!of_property_read_u32(np, "nvidia,usb3-port-fake", &value))
+		usb2->usb3_port_fake = value;
+	else
+		usb2->usb3_port_fake = -1; /* default */
 
 	usb2->supply = devm_regulator_get(&port->dev, "vbus");
 	return PTR_ERR_OR_ZERO(usb2->supply);
@@ -976,7 +993,7 @@ int tegra_xusb_padctl_usb3_save_context(struct tegra_xusb_padctl *padctl,
 	if (padctl->soc->ops->usb3_save_context)
 		return padctl->soc->ops->usb3_save_context(padctl, port);
 
-	return -ENOSYS;
+	return -EINVAL;
 }
 EXPORT_SYMBOL_GPL(tegra_xusb_padctl_usb3_save_context);
 
@@ -986,7 +1003,7 @@ int tegra_xusb_padctl_hsic_set_idle(struct tegra_xusb_padctl *padctl,
 	if (padctl->soc->ops->hsic_set_idle)
 		return padctl->soc->ops->hsic_set_idle(padctl, port, idle);
 
-	return -ENOSYS;
+	return -EINVAL;
 }
 EXPORT_SYMBOL_GPL(tegra_xusb_padctl_hsic_set_idle);
 
@@ -997,9 +1014,59 @@ int tegra_xusb_padctl_usb3_set_lfps_detect(struct tegra_xusb_padctl *padctl,
 		return padctl->soc->ops->usb3_set_lfps_detect(padctl, port,
 							      enable);
 
-	return -ENOSYS;
+	return -EINVAL;
 }
 EXPORT_SYMBOL_GPL(tegra_xusb_padctl_usb3_set_lfps_detect);
+
+int tegra_xusb_padctl_set_vbus_override(struct tegra_xusb_padctl *padctl)
+{
+	if (padctl->soc->ops->vbus_override)
+		return padctl->soc->ops->vbus_override(padctl, true);
+
+	return -EINVAL;
+}
+EXPORT_SYMBOL_GPL(tegra_xusb_padctl_set_vbus_override);
+
+int tegra_xusb_padctl_clear_vbus_override(struct tegra_xusb_padctl *padctl)
+{
+	if (padctl->soc->ops->vbus_override)
+		return padctl->soc->ops->vbus_override(padctl, false);
+
+	return -EINVAL;
+}
+EXPORT_SYMBOL_GPL(tegra_xusb_padctl_clear_vbus_override);
+
+void tegra_phy_xusb_utmi_pad_power_on(struct phy *phy)
+{
+	struct tegra_xusb_lane *lane = phy_get_drvdata(phy);
+	struct tegra_xusb_padctl *padctl = lane->pad->padctl;
+
+	if (padctl->soc->ops->utmi_pad_power_on)
+		padctl->soc->ops->utmi_pad_power_on(phy);
+}
+EXPORT_SYMBOL_GPL(tegra_phy_xusb_utmi_pad_power_on);
+
+void tegra_phy_xusb_utmi_pad_power_down(struct phy *phy)
+{
+	struct tegra_xusb_lane *lane = phy_get_drvdata(phy);
+	struct tegra_xusb_padctl *padctl = lane->pad->padctl;
+
+	if (padctl->soc->ops->utmi_pad_power_down)
+		padctl->soc->ops->utmi_pad_power_down(phy);
+}
+EXPORT_SYMBOL_GPL(tegra_phy_xusb_utmi_pad_power_down);
+
+int tegra_phy_xusb_utmi_port_reset_quirk(struct phy *phy)
+{
+	struct tegra_xusb_lane *lane = phy_get_drvdata(phy);
+	struct tegra_xusb_padctl *padctl = lane->pad->padctl;
+
+	if (padctl->soc->ops->utmi_port_reset_quirk)
+		return padctl->soc->ops->utmi_port_reset_quirk(phy);
+
+	return -EINVAL;
+}
+EXPORT_SYMBOL_GPL(tegra_phy_xusb_utmi_port_reset_quirk);
 
 MODULE_AUTHOR("Thierry Reding <treding@nvidia.com>");
 MODULE_DESCRIPTION("Tegra XUSB Pad Controller driver");

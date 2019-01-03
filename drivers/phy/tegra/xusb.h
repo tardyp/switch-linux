@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2015, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2014-2018, NVIDIA CORPORATION.  All rights reserved.
  * Copyright (c) 2015, Google Inc.
  *
  * This program is free software; you can redistribute it and/or modify it
@@ -58,6 +58,7 @@ struct tegra_xusb_usb2_lane {
 	struct tegra_xusb_lane base;
 
 	u32 hs_curr_level_offset;
+	bool powered_on;
 };
 
 static inline struct tegra_xusb_usb2_lane *
@@ -267,11 +268,20 @@ struct tegra_xusb_port *
 tegra_xusb_find_port(struct tegra_xusb_padctl *padctl, const char *type,
 		     unsigned int index);
 
+enum tegra_xusb_usb_port_cap {
+	USB_PORT_DISABLED = 0,
+	USB_HOST_CAP,
+	USB_DEVICE_CAP,
+	USB_OTG_CAP,
+};
+
 struct tegra_xusb_usb2_port {
 	struct tegra_xusb_port base;
 
 	struct regulator *supply;
 	bool internal;
+	enum tegra_xusb_usb_port_cap port_cap;
+	int usb3_port_fake;
 };
 
 static inline struct tegra_xusb_usb2_port *
@@ -353,6 +363,10 @@ struct tegra_xusb_padctl_ops {
 			     unsigned int index, bool idle);
 	int (*usb3_set_lfps_detect)(struct tegra_xusb_padctl *padctl,
 				    unsigned int index, bool enable);
+	int (*vbus_override)(struct tegra_xusb_padctl *padctl, bool set);
+	void (*utmi_pad_power_on)(struct phy *phy);
+	void (*utmi_pad_power_down)(struct phy *phy);
+	int (*utmi_port_reset_quirk)(struct phy *phy);
 };
 
 struct tegra_xusb_padctl_soc {
