@@ -158,6 +158,9 @@ Optional properties:
   is internal. In the absence of this property the port is considered to be
   external.
 - vbus-supply: phandle to a regulator supplying the VBUS voltage.
+- nvidia,usb3-port-fake: A integer property whose presense informs that a
+  fake USB3 port needs to be mapped for corresponding USB2 port. This entry
+  is applicable only for Tegra210 based platforms which has USB2 only ports.
 
 ULPI ports:
 -----------
