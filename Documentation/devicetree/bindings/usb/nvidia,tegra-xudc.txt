@@ -1,0 +1,67 @@
+Device tree binding for NVIDIA Tegra XUSB device mode controller (XUDC)
+============================
+
+The Tegra XUDC controller supports both USB 2.0 HighSpeed/FullSpeed and
+USB 3.0 SuperSpeed protocols.
+
+Required properties:
+--------------------
+- compatible: For Tegra210, must contain "nvidia,tegra210-xudc".
+- reg: Must contain the base and length of the XUSB device registers, XUSB device
+  PCI Config registers and XUSB device controller registers.
+- interrupts: Must contain the XUSB device interrupt
+- clocks: Must contain an entry for ell clocks used.
+  See ../clock/clock-bindings.txt for details.
+- nvidia,xusb-padctl: phandle to the XUSB pad controller that is used to
+  configure the USB pads used by the XSUB controller
+- power-domains: A list of PM domain specifiers that reference each power-domain
+  used by the XUSB device mode controller. This list must comprise of a specifier
+  for the XUSBA and XUSBB power-domains. See ../power/power_domain.txt and
+  ../arm/tegra/nvidia,tegra20-pmc.txt for details.
+- power-domain-names: A list of names that represent each of the specifiers in
+  the 'power-domains' property. Must include 'xusb_ss' and 'xusb_device'
+
+For Tegra210:
+- avddio_usb-supply: PCIe/USB3 analog logic power supply. Must supply 1.05 V.
+- hvdd_usb-supply: USB controller power supply. Must supply 3.3 V.
+- avdd-pll-utmip-supply: UTMI PLL power supply. Must supply 1.8 V.
+
+- phys: Must contain an entry for each entry in phy-names.
+  See ../phy/phy-bindings.txt for details.
+- extcon-cables: Must contains an extcon-cable entry which detects
+  USB VBUS pin. See ../extcon/extcon-usb-gpio.txt for details.
+
+Optional properties:
+--------------------
+- phy-names: Should include an entry for each PHY used by the controller.
+  Names must be "usb2", and "usb3" if support SuperSpeed device mode.
+  - "usb3" phy, SuperSpeed (SSTX+/SSTX-/SSRX+/SSRX-) data lines
+  - "usb2" phy, USB 2.0 (D+/D-) data lines
+
+Example:
+--------
+	extcon_usb: extcon_vbus {
+		compatible = "linux,extcon-usb-gpio";
+		vbus-gpio = <&gpio TEGRA_GPIO(Z, 0) 1>;
+	};
+	xudc@700d0000 {
+		compatible = "nvidia,tegra210-xudc";
+		phys = <&{/padctl@7009f000/pads/usb2/lanes/usb2-0}>;
+		phy-names = "usb2;
+		power-domains = <&pd_xusbdev>, <&pd_xusbss>;
+		power-domain-names = "xusb_device", "xusb_ss";
+        	avddio_usb-supply = <&vdd_pex_1v05>;
+		hvdd_usb-supply = <&vdd_3v3_sys>;
+		avdd_pll_utmip-supply = <&vdd_1v8>;
+		reg = <0x0 0x700d0000 0x0 0x8000>,
+			<0x0 0x700d8000 0x0 0x1000>,
+			<0x0 0x700d9000 0x0 0x1000>;
+		interrupts = <0 44 0x4>;
+		clocks = <&tegra_car TEGRA210_CLK_XUSB_DEV>,
+			<&tegra_car TEGRA210_CLK_XUSB_SS>,
+			<&tegra_car TEGRA210_CLK_XUSB_SSP_SRC>,
+			<&tegra_car TEGRA210_CLK_XUSB_HS_SRC>,
+			<&tegra_car TEGRA210_CLK_XUSB_FS_SRC>;
+		nvidia,xusb-padctl = <&padctl>;
+		extcon = <&extcon_usb>;
+	};
