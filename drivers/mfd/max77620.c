@@ -474,6 +474,57 @@ static int max77620_init_backup_battery_charging(struct max77620_chip *chip)
 	return ret;
 }
 
+static int max77620_init_low_battery_monitor(struct max77620_chip *chip)
+{
+	struct device *dev = chip->dev;
+	struct device_node *np;
+	bool pval;
+	u8 mask = 0;
+	u8 val = 0;
+	int ret;
+
+	np = of_get_child_by_name(dev->of_node, "low-battery-monitor");
+	if (!np) {
+		dev_info(dev, "Low battery monitoring support disabled\n");
+		return 0;
+	}
+
+	pval = of_property_read_bool(np, "maxim,low-battery-dac-enable");
+	if (pval) {
+		mask |= MAX77620_CNFGGLBL1_LBDAC_EN;
+		val |= MAX77620_CNFGGLBL1_LBDAC_EN;
+	}
+
+	pval = of_property_read_bool(np, "maxim,low-battery-dac-disable");
+	if (pval)
+		mask |= MAX77620_CNFGGLBL1_LBDAC_EN;
+
+	pval = of_property_read_bool(np, "maxim,low-battery-shutdown-enable");
+	if (pval) {
+		mask |= MAX77620_CNFGGLBL1_MPPLD;
+		val |= MAX77620_CNFGGLBL1_MPPLD;
+	}
+
+	pval = of_property_read_bool(np, "maxim,low-battery-shutdown-disable");
+	if (pval)
+		mask |= MAX77620_CNFGGLBL1_MPPLD;
+
+	pval = of_property_read_bool(np, "maxim,low-battery-reset-enable");
+	if (pval) {
+		mask |= MAX77620_CNFGGLBL1_LBRSTEN;
+		val |= MAX77620_CNFGGLBL1_LBRSTEN;
+	}
+
+	pval = of_property_read_bool(np, "maxim,low-battery-reset-disable");
+	if (pval)
+		mask |= MAX77620_CNFGGLBL1_LBRSTEN;
+
+	ret = regmap_update_bits(chip->rmap, MAX77620_REG_CNFGGLBL1, mask, val);
+	if (ret < 0)
+		dev_err(dev, "Reg CNFGGLBL1 update failed: %d\n", ret);
+	return ret;
+}
+
 static int max77620_read_es_version(struct max77620_chip *chip)
 {
 	unsigned int val;
@@ -563,7 +614,11 @@ static int max77620_probe(struct i2c_client *client,
 	if (ret < 0)
 		return ret;
 
-	ret =  devm_mfd_add_devices(chip->dev, PLATFORM_DEVID_NONE,
+	ret = max77620_init_low_battery_monitor(chip);
+	if (ret < 0)
+		return ret;
+
+	ret = devm_mfd_add_devices(chip->dev, PLATFORM_DEVID_NONE,
 				    mfd_cells, n_mfd_cells, NULL, 0,
 				    regmap_irq_get_domain(chip->top_irq_data));
 	if (ret < 0) {
