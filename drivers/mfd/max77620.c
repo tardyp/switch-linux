@@ -398,6 +398,82 @@ skip_fps:
 	return 0;
 }
 
+static int max77620_init_backup_battery_charging(struct max77620_chip *chip)
+{
+	struct device *dev = chip->dev;
+	struct device_node *np;
+	u32 pval;
+	u8 config;
+	int charging_current;
+	int charging_voltage;
+	int resistor;
+	int ret;
+
+	np = of_get_child_by_name(dev->of_node, "backup-battery");
+	if (!np) {
+		dev_info(dev, "Backup battery charging support disabled\n");
+		ret = regmap_update_bits(chip->rmap, MAX77620_REG_CNFGBBC,
+					 MAX77620_CNFGBBC_ENABLE, 0);
+		if (ret < 0)
+			dev_err(dev, "Failed to update CNFGBBC: %d\n", ret);
+		return ret;
+	}
+
+	ret = of_property_read_u32(np,
+			"maxim,backup-battery-charging-current", &pval);
+	charging_current = (!ret) ? pval : 50;
+
+	ret = of_property_read_u32(np,
+			"maxim,backup-battery-charging-voltage", &pval);
+	charging_voltage = (!ret) ? pval : 2500000;
+	charging_voltage /= 1000;
+
+	ret = of_property_read_u32(np,
+			"maxim,backup-battery-output-resister", &pval);
+	resistor = (!ret) ? pval : 1000;
+
+	config = MAX77620_CNFGBBC_ENABLE;
+	if (charging_current <= 50)
+		config |= 0 << MAX77620_CNFGBBC_CURRENT_SHIFT;
+	else if (charging_current <= 100)
+		config |= 3 << MAX77620_CNFGBBC_CURRENT_SHIFT;
+	else if (charging_current <= 200)
+		config |= 0 << MAX77620_CNFGBBC_CURRENT_SHIFT;
+	else if (charging_current <= 400)
+		config |= 3 << MAX77620_CNFGBBC_CURRENT_SHIFT;
+	else if (charging_current <= 600)
+		config |= 1 << MAX77620_CNFGBBC_CURRENT_SHIFT;
+	else
+		config |= 2 << MAX77620_CNFGBBC_CURRENT_SHIFT;
+
+	if (charging_current > 100)
+		config |= MAX77620_CNFGBBC_LOW_CURRENT_DISABLE;
+
+	if (charging_voltage <= 2500)
+		config |= 0 << MAX77620_CNFGBBC_VOLTAGE_SHIFT;
+	else if (charging_voltage <= 3000)
+		config |= 1 << MAX77620_CNFGBBC_VOLTAGE_SHIFT;
+	else if (charging_voltage <= 3300)
+		config |= 2 << MAX77620_CNFGBBC_VOLTAGE_SHIFT;
+	else
+		config |= 3 << MAX77620_CNFGBBC_VOLTAGE_SHIFT;
+
+	if (resistor <= 100)
+		config |= 0 << MAX77620_CNFGBBC_RESISTOR_SHIFT;
+	else if (resistor <= 1000)
+		config |= 1 << MAX77620_CNFGBBC_RESISTOR_SHIFT;
+	else if (resistor <= 3000)
+		config |= 2 << MAX77620_CNFGBBC_RESISTOR_SHIFT;
+	else if (resistor <= 6000)
+		config |= 3 << MAX77620_CNFGBBC_RESISTOR_SHIFT;
+
+	ret = regmap_write(chip->rmap, MAX77620_REG_CNFGBBC, config);
+	if (ret < 0)
+		dev_err(dev, "Reg 0x%02x write failed, %d\n",
+				MAX77620_REG_CNFGBBC, ret);
+	return ret;
+}
+
 static int max77620_read_es_version(struct max77620_chip *chip)
 {
 	unsigned int val;
@@ -480,6 +556,10 @@ static int max77620_probe(struct i2c_client *client,
 	}
 
 	ret = max77620_initialise_fps(chip);
+	if (ret < 0)
+		return ret;
+
+	ret = max77620_init_backup_battery_charging(chip);
 	if (ret < 0)
 		return ret;
 
