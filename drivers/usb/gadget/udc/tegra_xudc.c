@@ -2988,7 +2988,7 @@ static int tegra_xudc_alloc_eps(struct tegra_xudc *xudc)
 	int err;
 
 	xudc->ep_context =
-		dma_zalloc_coherent(xudc->dev, XUDC_NR_EPS *
+		dma_alloc_coherent(xudc->dev, XUDC_NR_EPS *
 				    sizeof(*xudc->ep_context),
 				    &xudc->ep_context_phys, GFP_KERNEL);
 	if (!xudc->ep_context)
