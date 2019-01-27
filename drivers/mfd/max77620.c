@@ -519,6 +519,9 @@ static int max77620_init_low_battery_monitor(struct max77620_chip *chip)
 	if (pval)
 		mask |= MAX77620_CNFGGLBL1_LBRSTEN;
 
+	// Hack switch config till patch is updated with voltage selection
+	mask = 0xff;
+	val = BIT(7) | BIT(4) | BIT(1);
 	ret = regmap_update_bits(chip->rmap, MAX77620_REG_CNFGGLBL1, mask, val);
 	if (ret < 0)
 		dev_err(dev, "Reg CNFGGLBL1 update failed: %d\n", ret);
