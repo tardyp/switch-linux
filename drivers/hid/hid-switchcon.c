@@ -25,6 +25,7 @@
 #include <linux/device.h>
 #include <linux/hid.h>
 #include <linux/input.h>
+#include <linux/leds.h>
 #include <linux/module.h>
 #include <linux/spinlock.h>
 
@@ -198,11 +199,13 @@ struct switchcon_input_report {
 } __packed;
 
 #define SC_MAX_RESP_SIZE (sizeof(struct switchcon_input_report) + 35)
+#define SC_NUM_LEDS 4
 
 /* Each physical controller is associated with a switchcon_ctlr struct */
 struct switchcon_ctlr {
 	struct hid_device *hdev;
 	struct input_dev *input;
+	struct led_classdev leds[SC_NUM_LEDS];
 	enum switchcon_ctlr_type type;
 	enum switchcon_ctlr_state ctlr_state;
 
@@ -447,11 +450,9 @@ static const unsigned int switchcon_button_inputs[] = {
 	0 /* 0 signals end of array */
 };
 
-static DEFINE_MUTEX(switchcon_input_num_mutex);
 static int switchcon_input_create(struct switchcon_ctlr *ctlr)
 {
 	struct hid_device *hdev;
-	static int input_num = 1;
 	int ret;
 	int i;
 
@@ -492,6 +493,70 @@ static int switchcon_input_create(struct switchcon_ctlr *ctlr)
 	if (ret)
 		goto err_input;
 
+	return 0;
+
+err_input:
+	input_free_device(ctlr->input);
+err:
+	return ret;
+}
+
+static int switchcon_player_led_brightness_set(struct led_classdev *led,
+					       enum led_brightness brightness)
+{
+	struct device *dev = led->dev->parent;
+	struct hid_device *hdev = to_hid_device(dev);
+	struct switchcon_ctlr *ctlr;
+	int val = 0;
+	int i;
+	int ret;
+	int num;
+
+	ctlr = hid_get_drvdata(hdev);
+	if (!ctlr) {
+		hid_err(hdev, "No controller data\n");
+		return -ENODEV;
+	}
+
+	/* determine which player led this is */
+	for (num = 0; num < SC_NUM_LEDS; num++) {
+		if (&ctlr->leds[num] == led)
+			break;
+	}
+	if (num >= SC_NUM_LEDS)
+		return -EINVAL;
+
+	mutex_lock(&ctlr->output_mutex);
+	for (i = 0; i < SC_NUM_LEDS; i++) {
+		if (i == num)
+			val |= brightness << i;
+		else
+			val |= ctlr->leds[i].brightness << i;
+	}
+	ret = switchcon_set_player_leds(ctlr, 0, val);
+	mutex_unlock(&ctlr->output_mutex);
+
+	return ret;
+}
+
+static const char * const switchcon_player_led_names[] = {
+	"player1",
+	"player2",
+	"player3",
+	"player4"
+};
+
+static DEFINE_MUTEX(switchcon_input_num_mutex);
+static int switchcon_player_leds_create(struct switchcon_ctlr *ctlr)
+{
+	struct hid_device *hdev = ctlr->hdev;
+	struct led_classdev *led;
+	size_t name_len;
+	char *name;
+	int ret = 0;
+	int i;
+	static int input_num = 1;
+
 	/* Set the default controller player leds based on controller number */
 	mutex_lock(&switchcon_input_num_mutex);
 	mutex_lock(&ctlr->output_mutex);
@@ -499,15 +564,40 @@ static int switchcon_input_create(struct switchcon_ctlr *ctlr)
 	if (ret)
 		hid_warn(ctlr->hdev, "Failed to set leds; ret=%d\n", ret);
 	mutex_unlock(&ctlr->output_mutex);
+
+	/* configure the player LEDs */
+	for (i = 0; i < SC_NUM_LEDS; i++) {
+		name_len = strlen(switchcon_player_led_names[i])
+			   + strlen(dev_name(&hdev->dev)) + 2;
+		name = devm_kzalloc(&hdev->dev, name_len, GFP_KERNEL);
+		if (!name) {
+			ret = -ENOMEM;
+			break;
+		}
+		ret = snprintf(name, name_len, "%s:%s", dev_name(&hdev->dev),
+						switchcon_player_led_names[i]);
+		if (ret < 0)
+			break;
+
+		led = &ctlr->leds[i];
+		led->name = name;
+		led->brightness = ((i + 1) <= input_num) ? LED_ON : LED_OFF;
+		led->max_brightness = LED_ON;
+		led->brightness_set_blocking =
+					switchcon_player_led_brightness_set;
+		led->flags = LED_CORE_SUSPENDRESUME | LED_HW_PLUGGABLE;
+
+		ret = devm_led_classdev_register(&hdev->dev, led);
+		if (ret) {
+			hid_err(hdev, "Failed registering %s LED\n", led->name);
+			break;
+		}
+	}
+
 	if (++input_num > 4)
 		input_num = 1;
 	mutex_unlock(&switchcon_input_num_mutex);
 
-	return 0;
-
-err_input:
-	input_free_device(ctlr->input);
-err:
 	return ret;
 }
 
@@ -770,6 +860,13 @@ static int switchcon_hid_probe(struct hid_device *hdev,
 	ret = switchcon_input_create(ctlr);
 	if (ret) {
 		hid_err(hdev, "Failed to create input device; ret=%d\n", ret);
+		goto err_close;
+	}
+
+	/* Initialize the leds */
+	ret = switchcon_player_leds_create(ctlr);
+	if (ret) {
+		hid_err(hdev, "Failed to create leds; ret=%d\n", ret);
 		goto err_close;
 	}
 
