@@ -11,6 +11,7 @@
  *   https://github.com/MTCKC/ProconXInput
  *   hid-wiimote kernel hid driver
  *   hid-logitech-hidpp driver
+ *   hid-sony driver
  *
  * This driver supports the Nintendo Switch Joy-Cons and Pro Controllers. The
  * Pro Controllers can either be used over USB or Bluetooth.
@@ -27,6 +28,7 @@
 #include <linux/input.h>
 #include <linux/leds.h>
 #include <linux/module.h>
+#include <linux/power_supply.h>
 #include <linux/spinlock.h>
 
 /*
@@ -208,6 +210,7 @@ struct switchcon_ctlr {
 	struct led_classdev leds[SC_NUM_LEDS];
 	enum switchcon_ctlr_type type;
 	enum switchcon_ctlr_state ctlr_state;
+	spinlock_t lock;
 
 	/* The following members are used for synchronous sends/receives */
 	enum switchcon_msg_type msg_type;
@@ -225,6 +228,12 @@ struct switchcon_ctlr {
 	struct switchcon_stick_cal right_stick_cal_x;
 	struct switchcon_stick_cal right_stick_cal_y;
 
+	/* power supply data */
+	struct power_supply *battery;
+	struct power_supply_desc battery_desc;
+	u8 battery_capacity;
+	bool battery_charging;
+	bool host_powered;
 };
 
 static int __switchcon_hid_send(struct hid_device *hdev, u8 *data, size_t len)
@@ -366,8 +375,40 @@ static void switchcon_parse_report(struct switchcon_ctlr *ctlr, u8 *data)
 {
 	struct input_dev *dev = ctlr->input;
 	enum switchcon_ctlr_type type = ctlr->type;
+	unsigned long flags;
+	u8 tmp;
 	u32 btns;
 
+	/* Parse the battery status */
+	tmp = data[2];
+	spin_lock_irqsave(&ctlr->lock, flags);
+	ctlr->host_powered = tmp & BIT(0);
+	ctlr->battery_charging = tmp & BIT(4);
+	tmp = tmp >> 5;
+	switch (tmp) {
+	case 0: /* empty */
+		ctlr->battery_capacity = 0;
+		break;
+	case 1: /* critical */
+		ctlr->battery_capacity = 1;
+		break;
+	case 2: /* low */
+		ctlr->battery_capacity = 30;
+		break;
+	case 3: /* medium */
+		ctlr->battery_capacity = 60;
+		break;
+	case 4: /* full */
+		ctlr->battery_capacity = 100;
+		break;
+	default:
+		ctlr->battery_capacity = 0;
+		hid_warn(ctlr->hdev, "Invalid battery status\n");
+		break;
+	}
+	spin_unlock_irqrestore(&ctlr->lock, flags);
+
+	/* Parse the buttons and sticks */
 	btns = hid_field_extract(ctlr->hdev, data + 3, 0, 24);
 
 	if (type == SWITCHCON_CTLR_TYPE_PROCON ||
@@ -601,6 +642,89 @@ static int switchcon_player_leds_create(struct switchcon_ctlr *ctlr)
 	return ret;
 }
 
+static int switchcon_battery_get_property(struct power_supply *supply,
+					  enum power_supply_property prop,
+					  union power_supply_propval *val)
+{
+	struct switchcon_ctlr *ctlr = power_supply_get_drvdata(supply);
+	unsigned long flags;
+	int ret = 0;
+	u8 capacity;
+	bool charging;
+	bool powered;
+
+	spin_lock_irqsave(&ctlr->lock, flags);
+	capacity = ctlr->battery_capacity;
+	charging = ctlr->battery_charging;
+	powered = ctlr->host_powered;
+	spin_unlock_irqrestore(&ctlr->lock, flags);
+
+	switch(prop) {
+	case POWER_SUPPLY_PROP_PRESENT:
+		val->intval = 1;
+		break;
+	case POWER_SUPPLY_PROP_SCOPE:
+		val->intval = POWER_SUPPLY_SCOPE_DEVICE;
+		break;
+	case POWER_SUPPLY_PROP_CAPACITY:
+		val->intval = capacity;
+		break;
+	case POWER_SUPPLY_PROP_STATUS:
+		if (charging)
+			val->intval = POWER_SUPPLY_STATUS_CHARGING;
+		else if (capacity == 100 && powered)
+			val->intval = POWER_SUPPLY_STATUS_FULL;
+		else
+			val->intval = POWER_SUPPLY_STATUS_DISCHARGING;
+		break;
+	default:
+		ret = -EINVAL;
+		break;
+	}
+	return ret;
+}
+
+static enum power_supply_property switchcon_battery_props[] = {
+	POWER_SUPPLY_PROP_PRESENT,
+	POWER_SUPPLY_PROP_CAPACITY,
+	POWER_SUPPLY_PROP_SCOPE,
+	POWER_SUPPLY_PROP_STATUS,
+};
+
+static int switchcon_power_supply_create(struct switchcon_ctlr *ctlr)
+{
+	struct hid_device *hdev = ctlr->hdev;
+	struct power_supply_config supply_config = { .drv_data = ctlr, };
+	const char * const name_fmt = "nintendo_switch_controller_battery_%s";
+	int ret = 0;
+
+	/* Set initially to 100 before receiving first input report */
+	ctlr->battery_capacity = 100;
+
+	/* Configure the battery's description */
+	ctlr->battery_desc.properties = switchcon_battery_props;
+	ctlr->battery_desc.num_properties =
+					ARRAY_SIZE(switchcon_battery_props);
+	ctlr->battery_desc.get_property = switchcon_battery_get_property;
+	ctlr->battery_desc.use_for_apm = 0;
+	ctlr->battery_desc.name = devm_kasprintf(&hdev->dev, GFP_KERNEL,
+						 name_fmt,
+						 dev_name(&hdev->dev));
+	if (!ctlr->battery_desc.name)
+		return -ENOMEM;
+
+	ctlr->battery = devm_power_supply_register(&hdev->dev,
+						   &ctlr->battery_desc,
+						   &supply_config);
+	if (IS_ERR(ctlr->battery)) {
+		ret = PTR_ERR(ctlr->battery);
+		hid_err(hdev, "Failed to register battery; ret=%d\n", ret);
+		return ret;
+	}
+	power_supply_powers(ctlr->battery, &hdev->dev);
+	return 0;
+}
+
 /* data input must have at least 9 bytes */
 static void switchcon_parse_lstick_calibration(u8 *data,
 					       struct switchcon_ctlr *ctlr)
@@ -755,6 +879,7 @@ static struct switchcon_ctlr *switchcon_ctlr_create(struct hid_device *hdev)
 	hid_set_drvdata(hdev, ctlr);
 	mutex_init(&ctlr->output_mutex);
 	init_waitqueue_head(&ctlr->wait);
+	spin_lock_init(&ctlr->lock);
 	return ctlr;
 }
 
@@ -867,6 +992,13 @@ static int switchcon_hid_probe(struct hid_device *hdev,
 	ret = switchcon_player_leds_create(ctlr);
 	if (ret) {
 		hid_err(hdev, "Failed to create leds; ret=%d\n", ret);
+		goto err_close;
+	}
+
+	/* Initialize the battery power supply */
+	ret = switchcon_power_supply_create(ctlr);
+	if (ret) {
+		hid_err(hdev, "Failed to create power_supply; ret=%d\n", ret);
 		goto err_close;
 	}
 
