@@ -111,7 +111,7 @@ typedef struct joycon_subcmd_packet
 {
 	joycon_uart_header pre;
 	u8 command;
-	u8 data[];
+	u8 data[38];
 } joycon_subcmd_packet;
 
 struct joycon_stick_calib
@@ -317,7 +317,7 @@ u16 joycon_extcommand_craft(u8 *out, u8 command, u8 *data, u16 size)
 void joycon_send_command(struct serdev_device *serdev, u8 command, u8 *data, u16 size)
 {
 	//TODO: memory corruption somewhere
-	u8 temp[0x1000]; //TODO: why did I make this static again
+	u8 temp[0x100]; //TODO: why did I make this static again
 	memset(temp, 0, sizeof(temp));
 
 	size = joycon_packet_craft(temp, command, data, size);
@@ -329,7 +329,7 @@ void joycon_send_command(struct serdev_device *serdev, u8 command, u8 *data, u16
 void joycon_send_extcommand(struct serdev_device *serdev, u8 command, u8 *data, u16 size)
 {
 	//u8 *temp = devm_kzalloc(&serdev->dev, size+0x1000, GFP_KERNEL);
-	u8 temp[0x1000];
+	u8 temp[0x100];
 	memset(temp, 0, sizeof(temp));
 
 	//TODO: memory corruption somewhere
@@ -342,7 +342,7 @@ void joycon_send_extcommand(struct serdev_device *serdev, u8 command, u8 *data, 
 
 void joycon_send_hidcommand(struct serdev_device *serdev, u8 command, u8 *data, u16 size)
 {
-	u8 data_gen[0x1000];
+	u8 data_gen[0x100];
 	u8 rumble[8] = {0x00, 0x01, 0x40, 0x40, 0x00, 0x01, 0x40, 0x40};
 
 	memset(data_gen, 0, sizeof(data_gen));
@@ -560,7 +560,7 @@ static void joycon_hidret_parse(struct serdev_device *serdev, const u8* packet, 
 	switch (packet[0])
 	{
 	case JOYCON_HID_DEVICE_INFO:
-		printk("Joy-Con firmware version %u.%u\n", packet[1], packet[2]);
+		printk("Joy-Con firmware version %X.%02X\n", packet[1], packet[2]);
 		joycon->button_set = packet[3];
 		if (packet[3] == 1)
 			printk("Joy-Con is a left controller\n");
