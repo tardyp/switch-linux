@@ -386,7 +386,7 @@ static void timeout_handler(struct work_struct *work)
 		gpiod_set_value(joycon->charge_gpio, 0);
 
 		err = serdev_device_write(serdev, (u8[]){0xA1, 0xA2, 0xA3, 0xA4}, 4, msecs_to_jiffies(200));
-		if (err) goto done;
+		if (err < 0) goto done;
 
 		joycon_send_command(serdev, JOYCON_COMMAND_HANDSHAKE, (u8[]){0x02, 0x01, 0x7E}, 3); //TODO: error passing
 		
