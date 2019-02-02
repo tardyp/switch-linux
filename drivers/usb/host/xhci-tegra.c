@@ -23,6 +23,8 @@
 #include <linux/regulator/consumer.h>
 #include <linux/reset.h>
 #include <linux/slab.h>
+#include <linux/extcon-provider.h>
+#include <linux/extcon.h>
 #include <soc/tegra/pmc.h>
 
 #include "xhci.h"
@@ -167,12 +169,17 @@ struct tegra_xusb {
 	struct device *dev;
 	void __iomem *regs;
 	struct usb_hcd *hcd;
-
+	struct extcon_dev *edev;
 	struct mutex lock;
 
 	int xhci_irq;
 	int mbox_irq;
+	bool host_mode;
+	bool inited;
 
+	struct notifier_block id_extcons_nb;
+	struct work_struct id_extcons_work;
+	
 	void __iomem *ipfs_base;
 	void __iomem *fpci_base;
 
@@ -637,6 +644,225 @@ static irqreturn_t tegra_xusb_mbox_thread(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
+static int tegra_xusb_phy_init(struct tegra_xusb *tegra)
+{
+	unsigned int i;
+	int err;
+
+	for (i = 0; i < tegra->num_phys; i++) {
+		err = phy_init(tegra->phys[i]);
+		if (err)
+			goto disable_phy;
+	}
+
+	return 0;
+
+disable_phy:
+	while (i--) {
+		phy_exit(tegra->phys[i]);
+	}
+
+	return err;
+}
+
+static int tegra_xusb_phy_enable(struct tegra_xusb *tegra)
+{
+	unsigned int i;
+	int err;
+
+	for (i = 0; i < tegra->num_phys; i++) {
+		err = phy_power_on(tegra->phys[i]);
+		if (err)
+			goto disable_phy;
+	}
+
+	return 0;
+
+disable_phy:
+	while (i--) {
+		phy_power_off(tegra->phys[i]);
+	}
+
+	return err;
+}
+
+static void tegra_xusb_phy_exit(struct tegra_xusb *tegra)
+{
+	unsigned int i;
+
+	for (i = 0; i < tegra->num_phys; i++) {
+		phy_exit(tegra->phys[i]);
+	}
+}
+
+static void tegra_xusb_phy_disable(struct tegra_xusb *tegra)
+{
+	unsigned int i;
+
+	for (i = 0; i < tegra->num_phys; i++) {
+		phy_power_off(tegra->phys[i]);
+	}
+}
+
+static void tegra_xhci_set_host_mode(struct tegra_xusb *tegra, bool on)
+{
+	struct xhci_hcd *xhci;
+	u32 status;
+	int wait, usb2 = 1, usb3 = 4;
+
+	xhci = hcd_to_xhci(tegra->hcd);
+
+	mutex_lock(&tegra->lock);
+	
+	if (on)
+		tegra_xusb_phy_enable(tegra);
+	else
+		tegra_xusb_phy_disable(tegra);
+
+	if (!on)
+		tegra_xusb_padctl_clear_id_override(tegra->padctl);
+
+	if (!tegra->inited && on)
+		goto role_update;
+
+	if ((tegra->host_mode && on) || (!tegra->host_mode && !on)) {
+		mutex_unlock(&tegra->lock);
+		return;
+	}
+
+role_update:
+
+	tegra->host_mode = on;
+	tegra->inited = true;
+	
+	if (on)
+		tegra_xusb_padctl_set_id_override(tegra->padctl);
+
+	mutex_unlock(&tegra->lock);
+
+	if (on) {
+		xhci_hub_control(xhci->shared_hcd, SetPortFeature,
+			USB_PORT_FEAT_POWER, usb3
+			, NULL, 0);
+
+		wait = 10;
+		do {
+			xhci_hub_control(xhci->shared_hcd, GetPortStatus
+				, 0, usb3
+				, (char *) &status, sizeof(status));
+			if (status & USB_SS_PORT_STAT_POWER)
+				break;
+			usleep_range(10, 20);
+		} while (--wait > 0);
+
+		if (!(status & USB_SS_PORT_STAT_POWER))
+			dev_info(tegra->dev, "failed to set SS PP\n");
+
+		xhci_hub_control(xhci->main_hcd, SetPortFeature,
+			USB_PORT_FEAT_POWER, usb2,
+			NULL, 0);
+
+		wait = 10;
+		do {
+			xhci_hub_control(xhci->main_hcd, GetPortStatus
+				, 0, usb2
+				, (char *) &status, sizeof(status));
+			if (status & USB_PORT_STAT_POWER)
+				break;
+			usleep_range(10, 20);
+		} while (--wait > 0);
+
+		if (!(status & USB_PORT_STAT_POWER))
+			dev_info(tegra->dev, "failed to set HS PP\n");
+
+	} else {
+		xhci_hub_control(xhci->shared_hcd, ClearPortFeature,
+			USB_PORT_FEAT_POWER, usb3
+			, NULL, 0);
+
+		wait = 1000;
+		do {
+			xhci_hub_control(xhci->shared_hcd, GetPortStatus
+				, 0, usb3
+				, (char *) &status, sizeof(status));
+			if (!(status & USB_SS_PORT_STAT_POWER))
+				break;
+			usleep_range(600, 700);
+		} while (--wait > 0);
+
+		if (status & USB_SS_PORT_STAT_POWER)
+			dev_info(tegra->dev, "failed to clear SS PP\n");
+
+		xhci_hub_control(xhci->main_hcd, ClearPortFeature,
+			USB_PORT_FEAT_POWER, usb2,
+			NULL, 0);
+
+		wait = 10;
+		do {
+			xhci_hub_control(xhci->main_hcd, GetPortStatus
+				, 0, usb2
+				, (char *) &status, sizeof(status));
+			if (!(status & USB_PORT_STAT_POWER))
+				break;
+			usleep_range(10, 20);
+		} while (--wait > 0);
+
+		if (status & USB_PORT_STAT_POWER)
+			dev_info(tegra->dev, "failed to clear HS PP\n");
+
+	}
+}
+
+
+
+static void tegra_xhci_id_extcon_work(struct work_struct *work)
+{
+	struct tegra_xusb *tegra = container_of(work, struct tegra_xusb,
+						    id_extcons_work);
+	int state;
+
+	state = extcon_get_state(tegra->edev, EXTCON_USB_HOST);
+	tegra_xhci_set_host_mode(tegra, !!state);
+}
+
+static int tegra_xhci_id_notifier(struct notifier_block *nb,
+					 unsigned long action, void *data)
+{
+	struct tegra_xusb *tegra = container_of(nb, struct tegra_xusb,
+						    id_extcons_nb);
+
+	schedule_work(&tegra->id_extcons_work);
+
+	return NOTIFY_OK;
+}
+
+static void tegra_xusb_deinit_extcon(struct tegra_xusb *tegra)
+{
+	extcon_unregister_notifier(tegra->edev,
+							   EXTCON_USB_HOST, &tegra->id_extcons_nb);
+	tegra->edev = NULL;
+}
+
+static int tegra_xusb_init_extcon(struct tegra_xusb *tegra)
+{
+	INIT_WORK(&tegra->id_extcons_work, tegra_xhci_id_extcon_work);
+	tegra->id_extcons_nb.notifier_call = tegra_xhci_id_notifier;
+
+
+	tegra->edev = extcon_get_edev_by_phandle(tegra->dev, 0);
+	if (!IS_ERR(tegra->edev)) {
+		dev_info(tegra->dev, "extcon: %p id\n", tegra->edev);
+		extcon_register_notifier(tegra->edev, EXTCON_USB_HOST,
+				&tegra->id_extcons_nb);
+		return 0;
+	} else if (PTR_ERR(tegra->edev) == -EPROBE_DEFER) {
+		tegra_xusb_deinit_extcon(tegra);
+		return -EPROBE_DEFER;
+	} else {
+		return PTR_ERR(tegra->edev);
+	}
+}
+
 static void tegra_xusb_ipfs_config(struct tegra_xusb *tegra,
 				   struct resource *regs)
 {
@@ -731,49 +957,13 @@ static void tegra_xusb_clk_disable(struct tegra_xusb *tegra)
 	clk_disable_unprepare(tegra->hs_src_clk);
 }
 
-static int tegra_xusb_phy_enable(struct tegra_xusb *tegra)
-{
-	unsigned int i;
-	int err;
-
-	for (i = 0; i < tegra->num_phys; i++) {
-		err = phy_init(tegra->phys[i]);
-		if (err)
-			goto disable_phy;
-
-		err = phy_power_on(tegra->phys[i]);
-		if (err) {
-			phy_exit(tegra->phys[i]);
-			goto disable_phy;
-		}
-	}
-
-	return 0;
-
-disable_phy:
-	while (i--) {
-		phy_power_off(tegra->phys[i]);
-		phy_exit(tegra->phys[i]);
-	}
-
-	return err;
-}
-
-static void tegra_xusb_phy_disable(struct tegra_xusb *tegra)
-{
-	unsigned int i;
-
-	for (i = 0; i < tegra->num_phys; i++) {
-		phy_power_off(tegra->phys[i]);
-		phy_exit(tegra->phys[i]);
-	}
-}
 
 static int tegra_xusb_runtime_suspend(struct device *dev)
 {
 	struct tegra_xusb *tegra = dev_get_drvdata(dev);
 
 	tegra_xusb_phy_disable(tegra);
+	tegra_xusb_phy_exit(tegra);
 	regulator_bulk_disable(tegra->soc->num_supplies, tegra->supplies);
 	tegra_xusb_clk_disable(tegra);
 
@@ -797,14 +987,22 @@ static int tegra_xusb_runtime_resume(struct device *dev)
 		goto disable_clk;
 	}
 
+	err = tegra_xusb_phy_init(tegra);
+	if (err < 0) {
+		dev_err(dev, "failed to init PHYs: %d\n", err);
+		goto disable_regulator;
+	}
+
 	err = tegra_xusb_phy_enable(tegra);
 	if (err < 0) {
 		dev_err(dev, "failed to enable PHYs: %d\n", err);
-		goto disable_regulator;
+		goto disable_phy;
 	}
 
 	return 0;
 
+disable_phy:
+	tegra_xusb_phy_exit(tegra);
 disable_regulator:
 	regulator_bulk_disable(tegra->soc->num_supplies, tegra->supplies);
 disable_clk:
@@ -995,12 +1193,15 @@ static int tegra_xusb_probe(struct platform_device *pdev)
 	struct phy *phy;
 	int err;
 
+
 	BUILD_BUG_ON(sizeof(struct tegra_xusb_fw_header) != 256);
 
 	tegra = devm_kzalloc(&pdev->dev, sizeof(*tegra), GFP_KERNEL);
 	if (!tegra)
 		return -ENOMEM;
 
+	tegra->host_mode = false;
+	tegra->inited = false;
 	tegra->soc = of_device_get_match_data(&pdev->dev);
 	mutex_init(&tegra->lock);
 	tegra->dev = &pdev->dev;
@@ -1261,17 +1462,25 @@ static int tegra_xusb_probe(struct platform_device *pdev)
 
 	mutex_unlock(&tegra->lock);
 
+	err = tegra_xusb_init_extcon(tegra);
+	if (err < 0)
+		goto remove_usb3;
+
 	err = devm_request_threaded_irq(&pdev->dev, tegra->mbox_irq,
 					tegra_xusb_mbox_irq,
 					tegra_xusb_mbox_thread, 0,
 					dev_name(&pdev->dev), tegra);
 	if (err < 0) {
 		dev_err(&pdev->dev, "failed to request IRQ: %d\n", err);
-		goto remove_usb3;
+		goto remove_extcon;
 	}
+	
+	schedule_work(&tegra->id_extcons_work);
 
 	return 0;
 
+remove_extcon:
+	tegra_xusb_deinit_extcon(tegra);
 remove_usb3:
 	usb_remove_hcd(xhci->shared_hcd);
 put_usb3:
@@ -1301,6 +1510,7 @@ static int tegra_xusb_remove(struct platform_device *pdev)
 	struct tegra_xusb *tegra = platform_get_drvdata(pdev);
 	struct xhci_hcd *xhci = hcd_to_xhci(tegra->hcd);
 
+	tegra_xusb_deinit_extcon(tegra);
 	usb_remove_hcd(xhci->shared_hcd);
 	usb_put_hcd(xhci->shared_hcd);
 	xhci->shared_hcd = NULL;
