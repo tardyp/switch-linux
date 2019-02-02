@@ -28,6 +28,8 @@ int tegra_xusb_padctl_usb3_set_lfps_detect(struct tegra_xusb_padctl *padctl,
 					   unsigned int port, bool enable);
 int tegra_xusb_padctl_set_vbus_override(struct tegra_xusb_padctl *padctl);
 int tegra_xusb_padctl_clear_vbus_override(struct tegra_xusb_padctl *padctl);
+int tegra_xusb_padctl_set_id_override(struct tegra_xusb_padctl *padctl);
+int tegra_xusb_padctl_clear_id_override(struct tegra_xusb_padctl *padctl);
 
 void tegra_phy_xusb_utmi_pad_power_on(struct phy *phy);
 void tegra_phy_xusb_utmi_pad_power_down(struct phy *phy);

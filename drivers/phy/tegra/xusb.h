@@ -364,6 +364,7 @@ struct tegra_xusb_padctl_ops {
 	int (*usb3_set_lfps_detect)(struct tegra_xusb_padctl *padctl,
 				    unsigned int index, bool enable);
 	int (*vbus_override)(struct tegra_xusb_padctl *padctl, bool set);
+	int (*id_override)(struct tegra_xusb_padctl *padctl, bool set);
 	void (*utmi_pad_power_on)(struct phy *phy);
 	void (*utmi_pad_power_down)(struct phy *phy);
 	int (*utmi_port_reset_quirk)(struct phy *phy);

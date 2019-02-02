@@ -2191,6 +2191,35 @@ static const struct tegra_xusb_port_ops tegra210_usb3_port_ops = {
 	.map = tegra210_usb3_port_map,
 };
 
+static int tegra210_xusb_padctl_id_override(struct tegra_xusb_padctl *padctl, bool set)
+{
+	u32 reg;
+
+	dev_dbg(padctl->dev, "%s id override\n", set ? "set" : "clear");
+
+	reg = padctl_readl(padctl, XUSB_PADCTL_USB2_VBUS_ID);
+	if (set) {
+		if (reg & XUSB_PADCTL_USB2_VBUS_ID_OVERRIDE_VBUS_ON) {
+			reg &= ~XUSB_PADCTL_USB2_VBUS_ID_OVERRIDE_VBUS_ON;
+			padctl_writel(padctl, reg, XUSB_PADCTL_USB2_VBUS_ID);
+			usleep_range(1000, 2000);
+
+			reg = padctl_readl(padctl, XUSB_PADCTL_USB2_VBUS_ID);
+		}
+
+		reg &= ~(XUSB_PADCTL_USB2_VBUS_ID_OVERRIDE_MASK <<
+			   XUSB_PADCTL_USB2_VBUS_ID_OVERRIDE_SHIFT);
+	} else {
+		reg &= ~(XUSB_PADCTL_USB2_VBUS_ID_OVERRIDE_MASK <<
+			   XUSB_PADCTL_USB2_VBUS_ID_OVERRIDE_SHIFT);
+		reg |= XUSB_PADCTL_USB2_VBUS_ID_OVERRIDE_VAL <<
+			   XUSB_PADCTL_USB2_VBUS_ID_OVERRIDE_SHIFT;
+	}
+	padctl_writel(padctl, reg, XUSB_PADCTL_USB2_VBUS_ID);
+
+	return 0;
+}
+
 static int tegra210_xusb_padctl_vbus_override(struct tegra_xusb_padctl *padctl,
 					      bool set)
 {
@@ -2303,6 +2332,7 @@ static const struct tegra_xusb_padctl_ops tegra210_xusb_padctl_ops = {
 	.usb3_set_lfps_detect = tegra210_usb3_set_lfps_detect,
 	.hsic_set_idle = tegra210_hsic_set_idle,
 	.vbus_override = tegra210_xusb_padctl_vbus_override,
+	.id_override = tegra210_xusb_padctl_id_override,
 	.utmi_pad_power_on = tegra210_utmi_pad_power_on,
 	.utmi_pad_power_down = tegra210_utmi_pad_power_down,
 	.utmi_port_reset_quirk = tegra210_utmi_port_reset_quirk,

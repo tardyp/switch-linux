@@ -1036,6 +1036,25 @@ int tegra_xusb_padctl_clear_vbus_override(struct tegra_xusb_padctl *padctl)
 }
 EXPORT_SYMBOL_GPL(tegra_xusb_padctl_clear_vbus_override);
 
+int tegra_xusb_padctl_set_id_override(struct tegra_xusb_padctl *padctl)
+{
+	if (padctl->soc->ops->id_override)
+		return padctl->soc->ops->id_override(padctl, true);
+
+	return -EINVAL;
+}
+EXPORT_SYMBOL_GPL(tegra_xusb_padctl_set_id_override);
+
+int tegra_xusb_padctl_clear_id_override(struct tegra_xusb_padctl *padctl)
+{
+	if (padctl->soc->ops->id_override)
+		return padctl->soc->ops->id_override(padctl, false);
+
+	return -EINVAL;
+}
+EXPORT_SYMBOL_GPL(tegra_xusb_padctl_clear_id_override);
+
+
 void tegra_phy_xusb_utmi_pad_power_on(struct phy *phy)
 {
 	struct tegra_xusb_lane *lane = phy_get_drvdata(phy);
