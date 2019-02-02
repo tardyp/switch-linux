@@ -1454,6 +1454,7 @@
 		nvidia,invert-rts;
 
 		joycon {
+			status = "okay";
 			compatible = "nintendo,joycon-uart";
 			charge-gpios = <&gpio TEGRA_GPIO(K, 3) GPIO_ACTIVE_HIGH>;
 		};
@@ -1467,6 +1468,7 @@
 		nvidia,invert-rts;
 
 		joycon {
+			status = "okay";
 			compatible = "nintendo,joycon-uart";
 			charge-gpios = <&gpio TEGRA_GPIO(CC, 3) GPIO_ACTIVE_HIGH>;
 		};
@@ -1527,6 +1529,14 @@
 			interrupts = <TEGRA_GPIO(V, 6) IRQ_TYPE_LEVEL_HIGH>;
 			realtek,ldo1-en-gpios = <&gpio TEGRA_GPIO(Z, 4) GPIO_ACTIVE_LOW>;
 			status = "okay";
+		};
+
+		bm92t: bm92t@18 {
+			compatible = "rohm,bm92t";
+			reg = <0x18>;
+			interrupt-parent = <&gpio>;
+			interrupts = <TEGRA_GPIO(K, 4) 0x01>;
+			#extcon-cells = <1>;
 		};
 
 		temperature-sensor@4c {
@@ -1592,7 +1602,6 @@
 			touchscreen-size-y = <720>;
 		};
 	};
-
 	/* i2c5 @ 400000hz
 	1b: max77621_cpu
 	1c: max77621_gpu
@@ -1998,14 +2007,15 @@
 		ports {
 			usb2-0 {
 				status = "okay";
-				vbus-supply = <&usb_otg_vbus>;
+				vbus-supply = <&vdd_3v3_sys>;
 				nvidia,usb3-port-fake = <3>;
 				mode = "otg";
 			};
 
 			usb3-0 {
 				nvidia,usb2-companion = <0>;
-				vbus-supply = <&usb_otg_vbus>;
+				vbus-supply = <&vdd_3v3_sys>;
+				mode = "otg";
 				status = "okay";
 			};
 		};
@@ -2018,7 +2028,7 @@
 		avddio_usb-supply = <&vdd_pex_1v05>;
 		hvdd_usb-supply = <&vdd_3v3_sys>;
 		avdd_pll_utmip-supply = <&vdd_1v8>;
-		dr_mode = "peripheral";
+		extcon = <&bm92t 1>;
 	};
 
 	usb@70090000 {
@@ -2034,7 +2044,7 @@
 		avdd-pll-uerefe-supply = <&avdd_1v05_pll>;
 		dvdd-usb-ss-pll-supply = <&vdd_pex_1v05>;
 		hvdd-usb-ss-pll-e-supply = <&vdd_1v8>;
-		dr_mode = "peripheral";
+		extcon = <&bm92t 0>;
 	};
 
 	ehci: usb@7d000000 {
