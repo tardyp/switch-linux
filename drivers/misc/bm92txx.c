@@ -16,7 +16,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
-
+#define DEBUG 1
 #include <linux/module.h>
 #include <linux/i2c.h>
 #include <linux/gpio.h>
@@ -79,14 +79,36 @@ enum bm92t_state_type {
 	NEW_PDO,
 	SYS_RDY_SENT,
 	DR_SWAP_SENT,
-	VDM_ID_PHASE1_SENT,
-	VDM_ACCEPT_PHASE1_SENT,
-	VDM_ID_PHASE2_SENT,
-	VDM_ACCEPT_PHASE2_SENT,
+	VDM_DISCOVER_IDENT,
+	VDM_RECEIVE_IDENT,
+	VDM_SENT_NINTENDO_ALTMODE,
+	VDM_ACCEPT_NINTENDO_ALTMODE,
+	VDM_SENT_DISC_IDENTITY,
+	VDM_ACCEPT_DISC_IDENTITY,
+	VDM_SENT_DISC_SVID,
+	VDM_ACCEPT_DISC_SVID,
+	VDM_SENT_DISC_DP_MODE,
+	VDM_ACCEPT_DISC_DP_MODE,
+	VDM_SENT_ENTER_DP_MODE,
+	VDM_ACCEPT_ENTER_DP_MODE,
 	ENTER_DP_MODE,
 	HPD_HANDLED,
 	VDM_QUERY_DEVICE_SENT,
 	VDM_ACCEPT_QUERY_DEVICE_SENT,
+	AA,
+	BB,
+	CC,
+	DD,
+	EE,
+	FF,
+	GG,
+	HH,
+	II,
+	JJ,
+	KK,
+	LL,
+	XX,
+	ZZ,
 	VDM_CHECK_USBHUB_SENT,
 	VDM_ACCEPT_CHECK_USBHUB_SENT
 };
@@ -126,14 +148,36 @@ static const char * const states[] = {
 	"NEW_PDO",
 	"SYS_RDY_SENT",
 	"DR_SWAP_SENT",
-	"VDM_ID_PHASE1_SENT",
-	"VDM_ACCEPT_PHASE1_SENT",
-	"VDM_ID_PHASE2_SENT",
-	"VDM_ACCEPT_PHASE2_SENT",
+	"VDM_DISCOVER_IDENT",
+	"VDM_RECEIVE_IDENT",
+	"VDM_SENT_NINTENDO_ALTMODE",
+	"VDM_ACCEPT_NINTENDO_ALTMODE",
+	"VDM_SENT_DISC_IDENTITY",
+	"VDM_ACCEPT_DISC_IDENTITY",
+	"VDM_SENT_DISC_SVID",
+	"VDM_ACCEPT_DISC_SVID",
+	"VDM_SENT_DISC_DP_MODE",
+	"VDM_ACCEPT_DISC_DP_MODE",
+	"VDM_SENT_ENTER_DP_MODE",
+	"VDM_ACCEPT_ENTER_DP_MODE",
 	"ENTER_DP_MODE",
 	"HPD_HANDLED",
 	"VDM_QUERY_DEVICE_SENT",
 	"VDM_ACCEPT_QUERY_DEVICE_SENT",
+	"AA",
+	"BB",
+	"CC",
+	"DD",
+	"EE",
+	"FF",
+	"GG",
+	"HH",
+	"II",
+	"JJ",
+	"KK",
+	"LL",
+	"XX",
+	"ZZ",
 	"VDM_CHECK_USBHUB_SENT",
 	"VDM_ACCEPT_CHECK_USBHUB_SENT"
 };
@@ -152,10 +196,30 @@ unsigned char vdm_id_phase1_msg[6] = {OUTGOING_VDM,
 	0x04, 0x01, 0x80, 0x00, 0xFF};
 unsigned char vdm_id_phase2_msg[6] = {OUTGOING_VDM,
 	0x04, 0x04, 0x81, 0x7E, 0x05};
+unsigned char vdm_disc_ident_msg[6] = {OUTGOING_VDM,
+	0x04, 0x01, 0x80, 0x00, 0xff};
+unsigned char vdm_disc_svid_msg[6] = {OUTGOING_VDM,
+	0x04, 0x02, 0x80, 0x00, 0xff};
+unsigned char vdm_disc_dp_mode_msg[6] = {OUTGOING_VDM,
+	0x04, 0x03, 0x80, 0x01, 0xff};
+unsigned char vdm_enter_dp_mode_msg[6] = {OUTGOING_VDM,
+	0x04, 0x04, 0x81, 0x01, 0xff};
 unsigned char vdm_query_device_msg[10] = {OUTGOING_VDM,
-	0x08, 0x00, 0x00, 0x7E, 0x05, 0x00, 0x01, 0x16, 0x00};
+	0x08, 0x00, 0x00, 0x7e, 0x05, 0x00, 0x01, 0x16, 0x00};
+unsigned char vdm_aa_msg[10] = {OUTGOING_VDM,
+	0x08, 0x00, 0x00, 0x7e, 0x05, 0x00, 0x01, 0x0b, 0x00};
+unsigned char vdm_cc_msg[10] = {OUTGOING_VDM,
+	0x08, 0x00, 0x00, 0x7E, 0x05, 0x00, 0x01, 0x18, 0x00};
+unsigned char vdm_ee_msg[14] = {OUTGOING_VDM,
+	0x0c, 0x00, 0x00, 0x7E, 0x05, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x14, 0x80};
+unsigned char vdm_gg_msg[10] = {OUTGOING_VDM,
+	0x08, 0x00, 0x00, 0x7e, 0x05, 0x00, 0x01, 0x0b, 0x00};
+unsigned char vdm_ii_msg[10] = {OUTGOING_VDM,
+	0x08, 0x00, 0x00, 0x7e, 0x05, 0x00, 0x01, 0x10, 0x00};
+unsigned char vdm_kk_msg[10] = {OUTGOING_VDM,
+	0x08, 0x00, 0x00, 0x7e, 0x05, 0x00, 0x01, 0x18, 0x00};
 unsigned char vdm_check_usbhub_msg[10] = {OUTGOING_VDM,
-	0x08, 0x00, 0x00, 0x7E, 0x05, 0x01, 0x01, 0x20, 0x00};
+	0x08, 0x00, 0x00, 0x7e, 0x05, 0x01, 0x01, 0x20, 0x00};
 
 static int bm92t_write_reg(struct bm92t_info *info,
 			   unsigned char *buf, unsigned len)
@@ -167,7 +231,7 @@ static int bm92t_write_reg(struct bm92t_info *info,
 	xfer_msg[0].flags = I2C_M_NOSTART;
 	xfer_msg[0].buf = buf;
 
-	dev_dbg(&info->i2c_client->dev,
+	dev_err(&info->i2c_client->dev,
 		     "write reg cmd = 0x%02x len = %d\n", buf[0], len);
 	return (i2c_transfer(info->i2c_client->adapter, xfer_msg, 1) != 1);
 }
@@ -230,7 +294,7 @@ static int bm92t_handle_hpd(struct bm92t_info *info)
 
 	err = bm92t_read_reg(info, INCOMING_VDM,
 			     msg, sizeof(msg));
-	if (!err && msg[0] == 4 && (msg[3] & 0x08) == 0x08) {
+	//if (!err && msg[0] == 4 && (msg[3] & 0x08) == 0x08) {
 		err = bm92t_write_reg(info, (unsigned char *) hpd,
 				      sizeof(hpd));
 		if (!err)
@@ -239,10 +303,10 @@ static int bm92t_handle_hpd(struct bm92t_info *info)
 			dev_err(&info->i2c_client->dev, "Writing VDM failed");
 			return -ENODEV;
 		}
-	} else {
-		dev_err(&info->i2c_client->dev, "Cannot handle HPD event.\n");
-		return -ENODEV;
-	}
+	//} else {
+	//	dev_err(&info->i2c_client->dev, "Cannot handle HPD event.\n");
+	//	return -ENODEV;
+	//}
 
 	return 0;
 }
@@ -276,7 +340,7 @@ static void bm92t_extcon_cable_update(struct bm92t_info *info,
 static inline void bm92t_state_machine(struct bm92t_info *info, int state)
 {
 	info->state = state;
-	dev_dbg(&info->i2c_client->dev, "state = %s\n", states[state]);
+	dev_err(&info->i2c_client->dev, "state = %s\n", states[state]);
 }
 
 static inline bool bm92t_is_success(const short alert_data,
@@ -325,8 +389,8 @@ static void
 	dev_info(&info->i2c_client->dev,
 		 "extcon cable is set to init state\n");
 
-	bm92t_extcon_cable_update(info, EXTCON_USB_HOST, true);
-	bm92t_extcon_cable_update(info, EXTCON_USB, false);
+	bm92t_extcon_cable_update(info, EXTCON_USB_HOST, false);
+	bm92t_extcon_cable_update(info, EXTCON_USB, true);
 }
 
 static bool bm92t_check_pdo(struct bm92t_info *info)
@@ -337,7 +401,7 @@ static bool bm92t_check_pdo(struct bm92t_info *info)
 	err = bm92t_read_reg(info, READ_PDOS,
 			     pdos, sizeof(pdos));
 
-	dev_dbg(&info->i2c_client->dev, "B05=0x%x, B06=0x%x, B7=0x%x, B8=0x%x\n",
+	dev_err(&info->i2c_client->dev, "B05=0x%x, B06=0x%x, B7=0x%x, B8=0x%x\n",
 			pdos[5], pdos[6], pdos[7], pdos[8]);
 
 	if (pdos[5] == 0x04 && pdos[6] == 0xb1 &&
@@ -428,7 +492,7 @@ static void bm92t_event_handler2(struct work_struct *work)
 				info->charging_enabled = false;
 			}
 
-			bm92t_extcon_cable_update(info, EXTCON_USB_HOST, false);
+			bm92t_extcon_cable_update(info, EXTCON_USB_HOST, true);
 			bm92t_extcon_cable_update(info, EXTCON_USB, false);
 			bm92t_state_machine(info, INIT_STATE);
 		}
@@ -452,18 +516,18 @@ static void bm92t_event_handler2(struct work_struct *work)
 		break;
 	case NEW_PDO:
 		if (bm92t_is_success(alert_data, status1_data))
-			dev_dbg(dev, "cmd done in NEW_PDO state\n");
+			dev_err(dev, "cmd done in NEW_PDO state\n");
 
 		if (alert_data & ALERT_CONTR) {
 			/* check PDO/RDO */
 			err = bm92t_read_reg(info, CURRENT_PDO,
 			pdo, sizeof(pdo));
-			dev_dbg(dev, "current PDO B0=0x%x, B1=0x%x, B2=0x%x, B3=0x%x\n",
+			dev_err(dev, "current PDO B0=0x%x, B1=0x%x, B2=0x%x, B3=0x%x\n",
 			pdo[0], pdo[1], pdo[2], pdo[3]);
 
 			err = bm92t_read_reg(info, CURRENT_RDO,
 			rdo, sizeof(rdo));
-			dev_dbg(dev, "current RDO B0=0x%x, B1=0x%x, B2=0x%x, B3=0x%x\n",
+			dev_err(dev, "current RDO B0=0x%x, B1=0x%x, B2=0x%x, B3=0x%x\n",
 			rdo[0], rdo[1], rdo[2], rdo[3]);
 
 			cmd = SYS_RDY_CMD;
@@ -487,18 +551,18 @@ static void bm92t_event_handler2(struct work_struct *work)
 			((status1_data & 0xff) == 0x80)) {
 			bm92t_send_vdm(info, vdm_id_phase1_msg,
 				sizeof(vdm_id_phase1_msg));
-			bm92t_state_machine(info, VDM_ID_PHASE1_SENT);
+			bm92t_state_machine(info, VDM_DISCOVER_IDENT);
 		}
 		break;
-	case VDM_ID_PHASE1_SENT:
+	case VDM_DISCOVER_IDENT:
 		if (alert_data & ALERT_VDM_RECEIVED) {
 			cmd = ACCEPT_VDM_CMD;
 			err = bm92t_send_cmd(info, &cmd);
-			bm92t_state_machine(info, VDM_ACCEPT_PHASE1_SENT);
+			bm92t_state_machine(info, VDM_RECEIVE_IDENT);
 		} else if (alert_data & ALERT_CMD_DONE)
-			dev_dbg(dev, "cmd done in VDM_ID_PHASE1_SENT\n");
+			dev_err(dev, "cmd done in VDM_DISCOVER_IDENT\n");
 		break;
-	case VDM_ACCEPT_PHASE1_SENT:
+	case VDM_RECEIVE_IDENT:
 		if (alert_data & ALERT_CMD_DONE) {
 			/* check incoming VDM */
 			err = bm92t_read_reg(info, INCOMING_VDM,
@@ -506,32 +570,123 @@ static void bm92t_event_handler2(struct work_struct *work)
 
 			if (!(vdm[5] == 0x7e && vdm[6] == 0x05 &&
 				vdm[15] == 0x03 && vdm[16] == 0x20)) {
-				dev_dbg(dev, "unexpected VDM\n");
+				dev_err(dev, "unexpected VDM\n");
 				goto ret;
 			}
 			bm92t_send_vdm(info, vdm_id_phase2_msg,
 				sizeof(vdm_id_phase2_msg));
-			bm92t_state_machine(info, VDM_ID_PHASE2_SENT);
+			bm92t_state_machine(info, VDM_SENT_NINTENDO_ALTMODE);
 		}
 		break;
-	case VDM_ID_PHASE2_SENT:
+	case VDM_SENT_NINTENDO_ALTMODE:
 		if (alert_data & ALERT_VDM_RECEIVED) {
 			cmd = ACCEPT_VDM_CMD;
 			err = bm92t_send_cmd(info, &cmd);
-			bm92t_state_machine(info, VDM_ACCEPT_PHASE2_SENT);
+			bm92t_state_machine(info, VDM_ACCEPT_NINTENDO_ALTMODE);
 		} else if (alert_data & ALERT_CMD_DONE)
-			dev_dbg(dev, "cmd done in VDM_ID_PHASE2_SENT\n");
+			dev_err(dev, "cmd done in VDM_SENT_NINTENDO_ALTMODE\n");
 		break;
-	case VDM_ACCEPT_PHASE2_SENT:
+	case VDM_ACCEPT_NINTENDO_ALTMODE:
 		if (alert_data & ALERT_CMD_DONE) {
 			/* check incoming VDM */
 			err = bm92t_read_reg(info, INCOMING_VDM,
 					vdm, 28);
 			if (!(vdm[1] == 0x44 && vdm[2] == 0x81 &&
 				vdm[3] == 0x7e && vdm[4] == 0x05)) {
-				dev_dbg(dev, "unexpected VDM\n");
+				dev_err(dev, "unexpected VDM\n");
 				goto ret;
 			}
+#if 0
+			bm92t_send_vdm(info, vdm_disc_ident_msg,
+				sizeof(vdm_disc_ident_msg));
+			bm92t_state_machine(info, VDM_SENT_DISC_IDENTITY);
+		}
+		break;
+	case VDM_SENT_DISC_IDENTITY:
+		if (alert_data & ALERT_VDM_RECEIVED) {
+			cmd = ACCEPT_VDM_CMD;
+			err = bm92t_send_cmd(info, &cmd);
+			bm92t_state_machine(info, VDM_ACCEPT_DISC_IDENTITY);
+		} else if (alert_data & ALERT_CMD_DONE)
+			dev_err(dev, "cmd done in VDM_SENT_DISC_IDENTITY\n");
+		break;
+	case VDM_ACCEPT_DISC_IDENTITY:
+		if (alert_data & ALERT_CMD_DONE) {
+			/* check incoming VDM */
+			err = bm92t_read_reg(info, INCOMING_VDM,
+					vdm, 28);
+			if (!(vdm[1] == 0x41 && vdm[2] == 0x80 &&
+				vdm[3] == 0x00 && vdm[4] == 0xff)) {
+				dev_err(dev, "unexpected VDM\n");
+				goto ret;
+			}
+			bm92t_send_vdm(info, vdm_disc_svid_msg,
+				sizeof(vdm_disc_svid_msg));
+			bm92t_state_machine(info, VDM_SENT_DISC_SVID);
+		}
+		break;
+	case VDM_SENT_DISC_SVID:
+		if (alert_data & ALERT_VDM_RECEIVED) {
+			cmd = ACCEPT_VDM_CMD;
+			err = bm92t_send_cmd(info, &cmd);
+			bm92t_state_machine(info, VDM_ACCEPT_DISC_SVID);
+		} else if (alert_data & ALERT_CMD_DONE)
+			dev_err(dev, "cmd done in VDM_SENT_DISC_SVID\n");
+		break;
+	case VDM_ACCEPT_DISC_SVID:
+		if (alert_data & ALERT_CMD_DONE) {
+			/* check incoming VDM */
+			err = bm92t_read_reg(info, INCOMING_VDM,
+					vdm, 28);
+			if (!(vdm[5] == 0x01 && vdm[6] == 0xff)) {
+				dev_err(dev, "unexpected VDM\n");
+				goto ret;
+			}
+			bm92t_send_vdm(info, vdm_disc_dp_mode_msg,
+				sizeof(vdm_disc_dp_mode_msg));
+			bm92t_state_machine(info, VDM_SENT_DISC_DP_MODE);
+		}
+		break;
+	case VDM_SENT_DISC_DP_MODE:
+		if (alert_data & ALERT_VDM_RECEIVED) {
+			cmd = ACCEPT_VDM_CMD;
+			err = bm92t_send_cmd(info, &cmd);
+			bm92t_state_machine(info, VDM_ACCEPT_DISC_DP_MODE);
+		} else if (alert_data & ALERT_CMD_DONE)
+			dev_err(dev, "cmd done in VDM_SENT_DISC_DP_MODE\n");
+		break;
+	case VDM_ACCEPT_DISC_DP_MODE:
+		if (alert_data & ALERT_CMD_DONE) {
+			/* check incoming VDM */
+			err = bm92t_read_reg(info, INCOMING_VDM,
+					vdm, 28); /* DP CAPS CHECK 0x01000800 is what should be sent */
+			if (!(vdm[5] == 0x01 && vdm[6] == 0x00 && vdm[7] == 0x08 && vdm[8] == 0x00)) {
+				dev_err(dev, "unexpected VDM\n");
+				goto ret;
+			}
+			bm92t_send_vdm(info, vdm_enter_dp_mode_msg,
+				sizeof(vdm_enter_dp_mode_msg));
+			bm92t_state_machine(info, VDM_SENT_ENTER_DP_MODE);
+		}
+		break;
+	case VDM_SENT_ENTER_DP_MODE:
+		if (alert_data & ALERT_VDM_RECEIVED) {
+			cmd = ACCEPT_VDM_CMD;
+			err = bm92t_send_cmd(info, &cmd);
+			bm92t_state_machine(info, VDM_ACCEPT_ENTER_DP_MODE);
+		} else if (alert_data & ALERT_CMD_DONE)
+			dev_err(dev, "cmd done in VDM_SENT_ENTER_DP_MODE\n");
+		break;
+	case VDM_ACCEPT_ENTER_DP_MODE:
+		if (alert_data & ALERT_CMD_DONE) {
+			/* check incoming VDM */
+			err = bm92t_read_reg(info, INCOMING_VDM,
+					vdm, 28);/* ACK */
+			if (!(vdm[1] == 0x44 && vdm[2] == 0x81)) {
+				dev_err(dev, "unexpected VDM\n");
+				goto ret;
+			}
+#endif
 			msleep(100);
 			cmd = DP_MODE_CMD;
 			err = bm92t_send_cmd(info, &cmd);
@@ -562,7 +717,7 @@ static void bm92t_event_handler2(struct work_struct *work)
 			err = bm92t_send_cmd(info, &cmd);
 			bm92t_state_machine(info, VDM_ACCEPT_QUERY_DEVICE_SENT);
 		} else if (alert_data & ALERT_CMD_DONE)
-			dev_dbg(dev, "cmd done in VDM_QUERY_DEVICE_SENT\n");
+			dev_err(dev, "cmd done in VDM_QUERY_DEVICE_SENT\n");
 		break;
 	case VDM_ACCEPT_QUERY_DEVICE_SENT:
 		if (alert_data & ALERT_CMD_DONE) {
@@ -580,6 +735,98 @@ static void bm92t_event_handler2(struct work_struct *work)
 					EXTCON_USB, true);
 			}
 
+			bm92t_send_vdm(info, vdm_aa_msg, sizeof(vdm_aa_msg));
+			bm92t_state_machine(info, AA);
+		}
+		break;
+	case AA:
+		if (alert_data & ALERT_VDM_RECEIVED) {
+			cmd = ACCEPT_VDM_CMD;
+			err = bm92t_send_cmd(info, &cmd);
+			bm92t_state_machine(info, BB);
+		} else if (alert_data & ALERT_CMD_DONE)
+			dev_err(dev, "cmd done in AA\n");
+		break;
+	case XX:
+		if (alert_data & ALERT_VDM_RECEIVED) {
+			cmd = ACCEPT_VDM_CMD;
+			err = bm92t_send_cmd(info, &cmd);
+			bm92t_state_machine(info, BB);
+		} else if (alert_data & ALERT_CMD_DONE)
+			dev_err(dev, "cmd done in XX\n");
+		break;
+	case BB:
+		if (alert_data & ALERT_CMD_DONE) {
+			bm92t_send_vdm(info, vdm_cc_msg, sizeof(vdm_cc_msg));
+			bm92t_state_machine(info, CC);
+		}
+		break;
+	case CC:
+		if (alert_data & ALERT_VDM_RECEIVED) {
+			cmd = ACCEPT_VDM_CMD;
+			err = bm92t_send_cmd(info, &cmd);
+			bm92t_state_machine(info, DD);
+		} else if (alert_data & ALERT_CMD_DONE)
+			dev_err(dev, "cmd done in CC\n");
+		break;
+	case DD:
+		if (alert_data & ALERT_CMD_DONE) {
+			bm92t_send_vdm(info, vdm_ee_msg, sizeof(vdm_ee_msg));
+			bm92t_state_machine(info, EE);
+		}
+		break;
+	case EE:
+		if (alert_data & ALERT_VDM_RECEIVED) {
+			cmd = ACCEPT_VDM_CMD;
+			err = bm92t_send_cmd(info, &cmd);
+			bm92t_state_machine(info, FF);
+		} else if (alert_data & ALERT_CMD_DONE)
+			dev_err(dev, "cmd done in EE\n");
+		break;
+	case FF:
+		if (alert_data & ALERT_CMD_DONE) {
+			bm92t_send_vdm(info, vdm_gg_msg, sizeof(vdm_gg_msg));
+			bm92t_state_machine(info, GG);
+		}
+		break;
+	case GG:
+		if (alert_data & ALERT_VDM_RECEIVED) {
+			cmd = ACCEPT_VDM_CMD;
+			err = bm92t_send_cmd(info, &cmd);
+			bm92t_state_machine(info, HH);
+		} else if (alert_data & ALERT_CMD_DONE)
+			dev_err(dev, "cmd done in GG\n");
+		break;
+	case HH:
+		if (alert_data & ALERT_CMD_DONE) {
+			bm92t_send_vdm(info, vdm_ii_msg, sizeof(vdm_ii_msg));
+			bm92t_state_machine(info, II);
+		}
+		break;
+	case II:
+		if (alert_data & ALERT_VDM_RECEIVED) {
+			cmd = ACCEPT_VDM_CMD;
+			err = bm92t_send_cmd(info, &cmd);
+			bm92t_state_machine(info, JJ);
+		} else if (alert_data & ALERT_CMD_DONE)
+			dev_err(dev, "cmd done in II\n");
+		break;
+	case JJ:
+		if (alert_data & ALERT_CMD_DONE) {
+			bm92t_send_vdm(info, vdm_kk_msg, sizeof(vdm_kk_msg));
+			bm92t_state_machine(info, KK);
+		}
+		break;
+	case KK:
+		if (alert_data & ALERT_VDM_RECEIVED) {
+			cmd = ACCEPT_VDM_CMD;
+			err = bm92t_send_cmd(info, &cmd);
+			bm92t_state_machine(info, LL);
+		} else if (alert_data & ALERT_CMD_DONE)
+			dev_err(dev, "cmd done in KK\n");
+		break;
+	case LL:
+		if (alert_data & ALERT_CMD_DONE) {
 			bm92t_send_vdm(info, vdm_check_usbhub_msg,
 				sizeof(vdm_check_usbhub_msg));
 			bm92t_state_machine(info, VDM_CHECK_USBHUB_SENT);
@@ -591,7 +838,7 @@ static void bm92t_event_handler2(struct work_struct *work)
 			err = bm92t_send_cmd(info, &cmd);
 			bm92t_state_machine(info, VDM_ACCEPT_CHECK_USBHUB_SENT);
 		} else if (alert_data & ALERT_CMD_DONE)
-			dev_dbg(dev, "cmd done in VDM_CHECK_USBHUB_SENT\n");
+			dev_err(dev, "cmd done in VDM_CHECK_USBHUB_SENT\n");
 		break;
 	case VDM_ACCEPT_CHECK_USBHUB_SENT:
 		if (alert_data & ALERT_CMD_DONE) {
