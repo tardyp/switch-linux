@@ -138,7 +138,7 @@ EXPORT_SYMBOL(drm_dp_link_train_clock_recovery_delay);
 
 void drm_dp_link_train_channel_eq_delay(const u8 dpcd[DP_RECEIVER_CAP_SIZE])
 {
-	unsigned int min = drm_dp_aux_rd_interval(dpcd);
+	unsigned int rd_interval = drm_dp_aux_rd_interval(dpcd);
 
 	usleep_range(rd_interval, rd_interval * 2);
 }

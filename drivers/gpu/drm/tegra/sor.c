@@ -418,6 +418,8 @@ struct tegra_sor {
 	struct clk *clk_dp;
 	struct clk *clk;
 
+	struct pinctrl *pinctrl;
+
 	struct drm_dp_link_tegra link;
 	struct drm_dp_aux *aux;
 
@@ -495,6 +497,19 @@ static inline void tegra_sor_writel(struct tegra_sor *sor, u32 value,
 {
 	trace_sor_writel(sor->dev, offset, value);
 	writel(value, sor->regs + (offset << 2));
+}
+
+static int tegra_sor_set_pinmux(struct tegra_sor *sor, const char *name)
+{
+	struct pinctrl_state *state;
+
+	state = pinctrl_lookup_state(sor->pinctrl, name);
+	if (IS_ERR(state))
+		return PTR_ERR(state);
+
+	dev_info(sor->dev, "selecting pinmux %s\n", name);
+
+	return pinctrl_select_state(sor->pinctrl, state);
 }
 
 static int tegra_sor_set_parent_clock(struct tegra_sor *sor, struct clk *parent)
@@ -1774,13 +1789,9 @@ static int tegra_sor_connector_get_modes(struct drm_connector *connector)
 	struct tegra_sor *sor = to_sor(output);
 	int err;
 
-	if (sor->aux)
-		drm_dp_aux_enable(sor->aux);
-
+	pm_runtime_get_sync(sor->dev);
 	err = tegra_output_connector_get_modes(connector);
-
-	if (sor->aux)
-		drm_dp_aux_disable(sor->aux);
+	pm_runtime_put(sor->dev);
 
 	return err;
 }
@@ -1828,12 +1839,6 @@ static void tegra_sor_edp_disable(struct drm_encoder *encoder)
 	err = tegra_sor_power_down(sor);
 	if (err < 0)
 		dev_err(sor->dev, "failed to power down SOR: %d\n", err);
-
-	if (sor->aux) {
-		err = drm_dp_aux_disable(sor->aux);
-		if (err < 0)
-			dev_err(sor->dev, "failed to disable DP: %d\n", err);
-	}
 
 	err = tegra_io_pad_power_disable(sor->pad);
 	if (err < 0)
@@ -1916,10 +1921,6 @@ static void tegra_sor_edp_enable(struct drm_encoder *encoder)
 		dev_err(sor->dev, "failed to power on LVDS rail: %d\n", err);
 
 	usleep_range(20, 100);
-
-	err = drm_dp_aux_enable(sor->aux);
-	if (err < 0)
-		dev_err(sor->dev, "failed to enable DPAUX: %d\n", err);
 
 	err = drm_dp_link_probe(sor->aux, &sor->link.base);
 	if (err < 0)
@@ -2945,10 +2946,6 @@ static void tegra_sor_dp_disable(struct drm_encoder *encoder)
 	if (err < 0)
 		dev_err(sor->dev, "failed to power off I/O pad: %d\n", err);
 
-	err = drm_dp_aux_disable(sor->aux);
-	if (err < 0)
-		dev_err(sor->dev, "failed disable DPAUX: %d\n", err);
-
 	pm_runtime_put(sor->dev);
 }
 
@@ -2981,10 +2978,6 @@ static void tegra_sor_dp_enable(struct drm_encoder *encoder)
 		dev_err(sor->dev, "failed to power on LVDS rail: %d\n", err);
 
 	usleep_range(20, 100);
-
-	err = drm_dp_aux_enable(sor->aux);
-	if (err < 0)
-		dev_err(sor->dev, "failed to enable DPAUX: %d\n", err);
 
 	err = drm_dp_link_probe(sor->aux, &sor->link.base);
 	if (err < 0)
@@ -3885,6 +3878,13 @@ static int tegra_sor_probe(struct platform_device *pdev)
 		sor->output.ddc = &sor->aux->ddc;
 	}
 
+	sor->pinctrl = devm_pinctrl_get(sor->dev);
+	if (IS_ERR(sor->pinctrl)) {
+		err = PTR_ERR(sor->pinctrl);
+		dev_err(sor->dev, "failed to get pin controller: %d\n", err);
+		return err;
+	}
+
 	if (!sor->aux) {
 		if (sor->soc->supports_hdmi) {
 			sor->ops = &tegra_sor_hdmi_ops;
@@ -4131,6 +4131,10 @@ static int tegra_sor_suspend(struct device *dev)
 	struct tegra_sor *sor = dev_get_drvdata(dev);
 	int err;
 
+	err = tegra_sor_set_pinmux(sor, "off");
+	if (err < 0)
+		dev_warn(dev, "failed to disable AUX pads: %d\n", err);
+
 	if (sor->rst) {
 		err = reset_control_assert(sor->rst);
 		if (err < 0) {
@@ -4149,6 +4153,7 @@ static int tegra_sor_suspend(struct device *dev)
 static int tegra_sor_resume(struct device *dev)
 {
 	struct tegra_sor *sor = dev_get_drvdata(dev);
+	const char *pinmux = sor->aux ? "aux" : "i2c";
 	int err;
 
 	err = clk_prepare_enable(sor->clk);
@@ -4167,6 +4172,11 @@ static int tegra_sor_resume(struct device *dev)
 			return err;
 		}
 	}
+
+	err = tegra_sor_set_pinmux(sor, pinmux);
+	if (err < 0)
+		dev_warn(dev, "failed to enable %s pads: %d\n",
+			 sor->aux ? "AUX" : "I2C", err);
 
 	return 0;
 }
