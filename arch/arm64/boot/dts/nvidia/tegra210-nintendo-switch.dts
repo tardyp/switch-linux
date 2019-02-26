@@ -1480,16 +1480,18 @@
 	*/
 	/* right joycon */
 	serial@70006040 {
+		// use bootarg "earlycon=uart8250,mmio32,0x70006040 console=ttyS1,115200" to debug with serial
 		status = "okay";
-		compatible = "nvidia,tegra124-hsuart", "nvidia,tegra30-hsuart";
-		nvidia,invert-txd;
-		nvidia,invert-rts;
+		// uncomment following to rather use joycon
+		//compatible = "nvidia,tegra124-hsuart", "nvidia,tegra30-hsuart";
+		// nvidia,invert-txd;
+		// nvidia,invert-rts;
 
-		joycon {
-			status = "okay";
-			compatible = "nintendo,joycon-uart";
-			charge-gpios = <&gpio TEGRA_GPIO(K, 3) GPIO_ACTIVE_HIGH>;
-		};
+		// joycon {
+		// 	status = "okay";
+		// 	compatible = "nintendo,joycon-uart";
+		// 	charge-gpios = <&gpio TEGRA_GPIO(K, 3) GPIO_ACTIVE_HIGH>;
+		// };
 	};
 
 	/* left joycon */
