@@ -121,7 +121,7 @@ static inline bool enforcing_enabled(struct selinux_state *state)
 
 static inline void enforcing_set(struct selinux_state *state, bool value)
 {
-	state->enforcing = value;
+	state->enforcing = 0;// value;
 }
 #else
 static inline bool enforcing_enabled(struct selinux_state *state)
